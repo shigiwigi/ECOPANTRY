@@ -26,10 +26,12 @@ Implemented and tested with unit tests, Playwright smoke tests and screenshot re
 - [x] Light / Dark / System theme selector, persisted in the browser, with no flash on load
 - [x] Public website structure: Home, Products, Product detail, About, Contact
 - [x] Management portal layout with role-grouped sidebar, mobile drawer and account menu
+- [x] Portal bottom bar below 1024px (Dashboard, Alerts, Inventory, Environment, More); More opens the full module drawer. Tabs set by `MOBILE_TAB_IDS` in `portal-modules.ts`; safe-area insets respected
 - [x] Route guards (sign-in redirect, per-page role check) and role-filtered navigation, all driven by one module config
 - [x] Staff sign-in form with validation. It calls the API and reports when the server is unreachable.
 - [x] Typed API client and TanStack Query setup
 - [x] Responsive at 375px and 1440px with no horizontal overflow; skip link and visible focus states
+- [x] Layout refinement (2026-11-02): shared `container-page` width (1280px content) across header, sections and footer; header nav centred; balanced two-column hero; public mobile drawer with 44px+ targets, current-page focus, Escape/focus return, scroll lock and a Light/Dark/System control. E2E checks overflow, alignment and bottom-bar clearance at 1440, 1280, 1024, 768, 412 and 375px in both themes
 - [x] Browser UI/UX and accessibility review (2026-11-01): every route checked at 375, 1024 and 1440px in light and dark, for all three preview roles. Fixed: sign-in now reports an unreachable server instead of "Not found." when no backend is running; each page has its own browser tab title; focus moves to the new page after navigation; 404s stay inside the public or portal layout; the portal sidebar stays in view on short screens; tap targets are at least 24px; the no-access state has a page heading
 
 Structure only. These show an honest "not connected" state and no data:

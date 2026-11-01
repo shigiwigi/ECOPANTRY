@@ -28,7 +28,8 @@ export function PortalNav({ modules, onNavigate }: PortalNavProps) {
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                        // Taller rows in the small-screen drawer for touch; the lg sidebar stays compact.
+                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors max-lg:min-h-11",
                         "outline-offset-0 focus-visible:outline-sidebar-ring",
                         isActive
                           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground shadow-[inset_2px_0_0_var(--sidebar-primary)]"

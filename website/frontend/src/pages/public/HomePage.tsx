@@ -29,17 +29,16 @@ export default function HomePage() {
   return (
     <>
       <section className="border-b bg-secondary/60">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-28 xl:py-32">
-          <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
-          <div className="max-w-2xl">
+        <div className="container-page grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-12 lg:gap-10 lg:py-20 xl:gap-16 xl:py-24">
+          <div className="lg:col-span-7">
             <p className="text-sm font-medium tracking-wide text-primary uppercase">{siteConfig.name} bakery</p>
-            <h1 className="mt-3 font-display text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl lg:text-6xl">
+            <h1 className="mt-3 max-w-2xl font-display text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl lg:text-6xl">
               {siteConfig.tagline}
             </h1>
-            <p className="mt-4 max-w-xl text-lg lg:text-xl text-muted-foreground">
+            <p className="mt-5 max-w-xl text-lg text-muted-foreground lg:text-xl">
               A bakery that keeps close track of its ingredients, so what reaches your table is fresh and not wasted.
             </p>
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg" className="h-11 px-5 text-sm sm:text-base">
                 <Link to="/products">
                   Browse products <ArrowRight aria-hidden />
@@ -50,17 +49,17 @@ export default function HomePage() {
               </Button>
             </div>
           </div>
+          {/* Brand mark until the owners supply real photography of the bakery. */}
           <div
             aria-hidden
-            className="hidden aspect-square items-center justify-center rounded-xl border bg-background/60 text-primary lg:flex"
+            className="hidden aspect-[5/4] items-center justify-center rounded-xl border bg-background/60 text-primary lg:col-span-5 lg:flex"
           >
-            <Logo showWordmark={false} className="[&>svg]:size-40 xl:[&>svg]:size-48" />
+            <Logo showWordmark={false} className="[&>svg]:size-36 xl:[&>svg]:size-44" />
           </div>
-        </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+      <section className="container-page py-14 lg:py-20">
         <h2 className="text-2xl font-semibold lg:text-3xl tracking-tight">How we work</h2>
         <ul className="mt-8 grid gap-8 sm:grid-cols-3">
           {VALUES.map(({ icon: Icon, title, text }) => (

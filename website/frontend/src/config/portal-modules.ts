@@ -34,6 +34,8 @@ export interface PortalModule {
   /** Path relative to /portal. Empty string is the dashboard index. */
   path: string
   label: string
+  /** Shorter label for the mobile bottom bar, where tabs are about 75px wide. Defaults to `label`. */
+  tabLabel?: string
   title: string
   summary: string
   icon: LucideIcon
@@ -153,6 +155,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     id: "environment",
     path: "environment",
     label: "Environment",
+    tabLabel: "Climate",
     title: "Storage environment",
     summary: "Temperature and humidity history from the inventory station.",
     icon: ThermometerSun,
@@ -270,6 +273,13 @@ export const PORTAL_MODULES: PortalModule[] = [
     roles: ALL,
   },
 ]
+
+/**
+ * High-frequency modules pinned to the mobile/tablet bottom bar, in order. Every
+ * other module stays one tap away under "More", which opens the full navigation.
+ * Keep this short (four at most) so each tab stays a comfortable touch target.
+ */
+export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "alerts", "inventory", "environment"]
 
 export function portalHref(module: PortalModule): string {
   return module.path ? `/portal/${module.path}` : "/portal"
