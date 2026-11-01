@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useForm } from "react-hook-form"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 import { Logo } from "@/components/common/Logo"
+import { RouteLoading } from "@/components/common/RouteLoading"
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/common/SkipLink"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,7 @@ import { ThemeMenu } from "@/features/theme/ThemeMenu"
 import { useDocumentTitle } from "@/lib/document-title"
 
 export default function SignInPage() {
-  const { user, signIn } = useAuth()
+  const { user, status, endReason, checkSession, signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [formError, setFormError] = useState<string | null>(null)
@@ -26,7 +27,13 @@ export default function SignInPage() {
     formState: { errors, isSubmitting },
   } = useForm<SignInValues>({ resolver: zodResolver(signInSchema) })
 
+  // Someone who is already signed in goes straight on to the portal.
+  useEffect(() => {
+    if (status === "unknown") checkSession()
+  }, [status, checkSession])
+
   const destination = (location.state as { from?: string } | null)?.from ?? "/portal"
+  if (status !== "ready") return <RouteLoading />
   if (user) return <Navigate to={destination} replace />
 
   const submit = handleSubmit(async (values) => {
@@ -40,6 +47,7 @@ export default function SignInPage() {
       } else if (error instanceof ApiError && error.status === 401) {
         setFormError("That email and password don't match an account.")
       } else if (error instanceof ApiError) {
+        // Deactivated (403) and temporarily locked (429) accounts: the server's wording says what to do.
         setFormError(error.message)
       } else {
         setFormError("Sign-in failed because the server sent an unexpected response.")
@@ -72,6 +80,11 @@ export default function SignInPage() {
           <p className="mt-1 text-sm text-muted-foreground">For bakery staff and inspectors. Customers don't need an account.</p>
 
           <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
+            {endReason === "session_ended" && !formError && (
+              <p role="status" className="rounded-md border border-info/40 bg-info/10 px-3 py-2 text-sm text-foreground">
+                Your session has ended. Sign in again to continue.
+              </p>
+            )}
             {formError && (
               <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {formError}

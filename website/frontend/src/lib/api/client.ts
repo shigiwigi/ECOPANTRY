@@ -1,9 +1,10 @@
 /**
  * Typed fetch wrapper for the EcoPantry FastAPI backend (`/api/v1`).
  *
- * The backend owns authentication and authorisation. Requests send cookies
- * (`credentials: "include"`) so a server-issued session can be used once
- * Milestone 3 implements it; no tokens are stored in browser storage.
+ * The backend owns authentication and authorisation. The session lives in an
+ * HttpOnly cookie the browser sends itself (`credentials: "include"`); this
+ * code never sees it. The CSRF token the backend returns at sign-in is kept in
+ * memory only (never localStorage) and sent as `X-CSRF-Token` on unsafe methods.
  */
 
 const DEFAULT_BASE_URL = "/api/v1"
@@ -28,18 +29,53 @@ export class ApiError extends Error {
   get isUnreachable() {
     return this.kind === "network"
   }
+
+  /** The backend's stable error code (`invalid_credentials`, `account_locked`, ...), if it sent one. */
+  get code(): string | null {
+    const detail = this.detail
+    if (detail && typeof detail === "object" && "code" in detail) {
+      const { code } = detail as { code: unknown }
+      if (typeof code === "string") return code
+    }
+    return null
+  }
 }
 
 const NO_BACKEND_STATUSES = new Set([404, 405, 502, 503, 504])
 
-type JsonBody =Record<string, unknown> | unknown[]
+type JsonBody = Record<string, unknown> | unknown[]
 
 export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   body?: JsonBody
+  /**
+   * Don't report a 401 to the session listener. For the session endpoints
+   * themselves, where a 401 is an expected answer rather than a lost session.
+   */
+  ignoreUnauthorized?: boolean
+}
+
+const CSRF_HEADER = "X-CSRF-Token"
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
+
+let csrfToken: string | null = null
+
+/** Set by the auth layer after sign-in or a session check; cleared on sign-out. */
+export function setCsrfToken(token: string | null) {
+  csrfToken = token
+}
+
+type UnauthorizedListener = () => void
+let unauthorizedListener: UnauthorizedListener | null = null
+
+/** Called when any request comes back 401, so the app can treat the session as ended. */
+export function onUnauthorized(listener: UnauthorizedListener | null) {
+  unauthorizedListener = listener
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { body, headers, ...init } = options
+  const { body, headers, ignoreUnauthorized = false, ...init } = options
+  const method = (init.method ?? "GET").toUpperCase()
+  const csrf: Record<string, string> = csrfToken && !SAFE_METHODS.has(method) ? { [CSRF_HEADER]: csrfToken } : {}
 
   let response: Response
   try {
@@ -49,6 +85,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       headers: {
         Accept: "application/json",
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...csrf,
         ...headers,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -73,6 +110,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     throw new ApiError("network", "Can't reach the EcoPantry server.", response.status)
   }
   if (!response.ok) {
+    if (response.status === 401 && !ignoreUnauthorized) unauthorizedListener?.()
     throw new ApiError("http", errorMessage(payload, response.status), response.status, payload)
   }
   // A dev-server fallback can answer with HTML; treat that as "no backend" rather than data.

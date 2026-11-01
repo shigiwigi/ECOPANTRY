@@ -1,10 +1,12 @@
 # EcoPantry backend
 
-FastAPI + SQLAlchemy 2 + PostgreSQL REST API for EcoPantry. Milestone 2 is the
-foundation only: settings, database connection, migrations, error handling,
-health checks and tests. There are no business endpoints, no authentication
-and no role checks yet. Don't treat this API as protecting any data until
-those land.
+FastAPI + SQLAlchemy 2 + PostgreSQL REST API for EcoPantry. Implemented so
+far: settings, database connection, migrations, error handling, health checks,
+and staff authentication (Argon2id passwords, server-side sessions in
+PostgreSQL, HttpOnly cookies, CSRF protection, roles and permissions enforced
+on every protected endpoint, account deactivation, an append-only audit log).
+There are no business endpoints (inventory, batches, ...) yet. The design is in
+[docs/AUTH_DESIGN.md](../../docs/AUTH_DESIGN.md).
 
 ## Requirements
 
@@ -40,7 +42,14 @@ python3 -m venv .venv
 
 # 5. Create or upgrade the database schema
 .venv/bin/alembic upgrade head
+
+# 6. Create the first administrator (prompts for the password twice)
+.venv/bin/python -m app.cli create-admin --email you@example.com --name "Your Name"
 ```
+
+There is no default account and no default password. Step 6 only works while
+no administrator exists; after that, add staff through the API (or portal) as
+that administrator.
 
 You can `source .venv/bin/activate` instead of prefixing commands with `.venv/bin/`.
 
@@ -103,6 +112,11 @@ or `website/backend/.env` (environment variables win). See `.env.example`.
 | `DATABASE_MAX_OVERFLOW` | no | `10` | |
 | `DATABASE_POOL_TIMEOUT` | no | `10` | Seconds to wait for a free pooled connection. |
 | `DATABASE_CONNECT_TIMEOUT` | no | `5` | Seconds to wait for PostgreSQL to accept a connection. |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | no | `60` | A session ends after this long without a request. |
+| `SESSION_ABSOLUTE_TIMEOUT_HOURS` | no | `12` | A session ends this long after sign-in, whatever the activity. |
+| `SESSION_COOKIE_SECURE` | no | unset | Unset: `Secure` cookie only in production. Production refuses `false`. When secure, the cookie is named `__Host-ecopantry_session`, otherwise `ecopantry_session`. |
+| `LOGIN_MAX_FAILED_ATTEMPTS` | no | `5` | Wrong passwords in a row before a temporary lockout. |
+| `LOGIN_LOCKOUT_MINUTES` | no | `15` | Length of that lockout. |
 
 `DATABASE_URL` is held as a secret value, so it doesn't show up in logs or
 `repr()` output. Alembic reads the same setting; there is no URL in `alembic.ini`.
@@ -116,6 +130,64 @@ All routes are under `/api/v1`.
 | GET | `/api/v1/health` | Liveness. `200 {"status": "ok", "service": "ecopantry-api", "version": "0.1.0"}`. Does not touch the database. |
 | GET | `/api/v1/health/ready` | Readiness. Runs `SELECT 1` on PostgreSQL. `200 {"status": "ready", "database": "ok"}`, or `503 {"status": "unavailable", "database": "unreachable"}`. |
 | GET | `/api/v1/docs`, `/api/v1/openapi.json` | Swagger UI and OpenAPI schema (not in production). |
+| POST | `/api/v1/auth/login` | Public. `{email, password}` (JSON only). Sets the session cookie and returns `{user, csrf_token, expires_at}`. `401 invalid_credentials`, `403 account_disabled` (right password, deactivated account), `429 account_locked`. |
+| POST | `/api/v1/auth/logout` | Public. Ends the session on the server and clears the cookie. Needs `X-CSRF-Token` when a session exists. `204`. |
+| GET | `/api/v1/auth/me` | Session required. Same body as login. The frontend calls it to restore a session after a reload. |
+| POST | `/api/v1/auth/password` | Session + CSRF. `{current_password, new_password}`. Signs out the employee's other sessions. `204`; `400 invalid_current_password` / `password_rejected`. |
+| GET | `/api/v1/employees` | `employees.view` (Administrator, Inspector). Staff accounts, never with password data. |
+| POST | `/api/v1/employees` | `employees.manage` (Administrator). `{email, name, role, password}` creates an account. `201`; `409` for a taken email. |
+| POST | `/api/v1/employees/{id}/deactivate` | `employees.manage`. Disables the account and ends all its sessions. You can't deactivate yourself or the last active administrator (`409`). |
+| POST | `/api/v1/employees/{id}/reactivate` | `employees.manage`. Re-enables the account and clears any lockout. |
+| POST | `/api/v1/employees/{id}/password` | `employees.manage`. Sets a new password and ends all that account's sessions. `204`. |
+
+### Sessions and CSRF
+
+- Sign-in sets an HttpOnly, `SameSite=Lax`, `Path=/` cookie holding a random
+  token. The database stores only its SHA-256, so a copy of the database can't
+  be used to sign in.
+- Every `POST`/`PUT`/`PATCH`/`DELETE` made with a session must send the
+  session's CSRF token (from the login or `/auth/me` response) in the
+  `X-CSRF-Token` header, or it gets `403 csrf_failed`.
+- An ended session (expired, idle, signed out, deactivated, password changed)
+  gets `401 session_expired` and a `Set-Cookie` that removes the cookie. No
+  session at all gets `401 not_authenticated`.
+- All `/api/v1` responses carry `Cache-Control: no-store`.
+
+### Protecting a new endpoint
+
+Depend on a permission from `app/auth/permissions.py`; this also checks the
+session and, for unsafe methods, the CSRF token:
+
+```python
+from typing import Annotated
+from fastapi import Depends
+from app.auth.dependencies import require_permission
+from app.auth.permissions import Permission
+from app.auth.service import Principal
+
+@router.post("/batches")
+def create_batch(principal: Annotated[Principal, Depends(require_permission(Permission.BATCHES_MANAGE))]): ...
+```
+
+Use `CurrentPrincipal` for "any signed-in employee". `tests/test_route_protection.py`
+fails if a new route answers without a session and isn't on its short public
+list, so a forgotten dependency is caught. Record changes with
+`app.services.audit.record_event` in the same transaction.
+
+## Staff account commands
+
+For the server operator, from `website/backend/`. Passwords are prompted for
+(typed twice, not shown) or piped in with `--password-stdin`; they are never
+accepted as arguments, which would leave them in shell history.
+
+| Task | Command |
+|---|---|
+| Create the first administrator | `.venv/bin/python -m app.cli create-admin --email … --name "…"` |
+| Reset a forgotten password (signs them out everywhere) | `.venv/bin/python -m app.cli set-password --email …` |
+| Deactivate / reactivate an account | `.venv/bin/python -m app.cli deactivate --email …` / `reactivate --email …` |
+| Delete sessions that ended over 30 days ago | `.venv/bin/python -m app.cli purge-sessions --days 30` |
+
+Every command is recorded in `audit_events` with actor type `cli`.
 
 ### Error format
 
@@ -143,13 +215,24 @@ website/backend/
     factory.py           create_app(settings): wiring, docs, lifespan, routers
     core/config.py       Settings (environment / .env)
     core/errors.py       AppError classes and the exception handlers
+    core/security.py     Argon2id password hashing, password rules, session tokens
+    core/middleware.py   Cache-Control: no-store on API responses
+    auth/permissions.py  roles and permissions (mirrors the migration seed)
+    auth/service.py      sign-in, lockout, sessions, password change
+    auth/dependencies.py CurrentPrincipal, require_permission (session + CSRF checks)
+    auth/cookies.py      session cookie settings
+    services/            employee lifecycle and audit events, shared by API and CLI
+    cli.py               python -m app.cli (create-admin, set-password, ...)
     db/base.py           DeclarativeBase with constraint naming conventions
     db/session.py        Database (engine + session factory), SessionDep
-    models/__init__.py   import every model here so Alembic sees it (none yet)
+    models/__init__.py   import every model here so Alembic sees it
+    models/auth.py       roles, permissions, employees, auth_sessions
+    models/audit.py      audit_events (append-only)
     schemas/             Pydantic request/response models
     api/v1/router.py     includes every v1 route module
-    api/v1/routes/       one module per feature (health.py so far)
+    api/v1/routes/       one module per feature (health, auth, employees)
   alembic/               migration environment and versions/
+  scripts/e2e_server.py  API + throwaway database for the frontend's full-stack browser tests
   tests/                 pytest suite
 ```
 
@@ -165,16 +248,17 @@ Sessions from `SessionDep` don't commit automatically: call `session.commit()`
 when a request should save changes. Anything not committed is rolled back when
 the request ends.
 
-Role-based access (Administrator, Storekeeper, Inspector) must be enforced
-here on every endpoint once authentication exists. The frontend's role checks
-are only for the interface.
+Every endpoint must enforce its permission here (see "Protecting a new
+endpoint"). The frontend's role checks are only for the interface.
 
 ## Tests
 
 `pytest` runs two kinds of tests:
 
 - **Unit tests** build the app with settings that point at a closed port, so they need no database and never read your `.env`.
-- **Integration tests** (`@pytest.mark.integration`) use `DATABASE_URL` and need the PostgreSQL container running. The migration test creates a throwaway `ecopantry_test_*` database, runs every migration up and down there, and drops it, so your development data is never touched.
+- **Integration tests** (`@pytest.mark.integration`) use `DATABASE_URL` and need the PostgreSQL container running. They create throwaway `ecopantry_test_*` databases on that server, migrate them, and drop them afterwards, so your development data is never touched. Auth tests share one migrated test database and empty its account tables between tests.
+
+What is covered: Argon2id hashing and verification, password rules, sign-in success and every failure (wrong password, unknown email, lockout, deactivated account, non-JSON body), cookie attributes, tokens stored only as hashes, `/auth/me`, sign-out, absolute and idle expiry, revoked/made-up/tampered cookies, CSRF on every unsafe auth route, password change, role checks on the staff endpoints (including Inspector read-only), deactivation ending sessions, the CLI, the audit log being append-only, migrations up and down, the role/permission seed matching the code, models matching the migrations, every non-public route refusing anonymous requests, and passwords/tokens never appearing in logs or audit records.
 
 If PostgreSQL isn't running, skip the integration tests with `pytest -m "not integration"`.
 

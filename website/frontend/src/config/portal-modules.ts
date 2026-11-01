@@ -221,7 +221,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     group: "Records",
     roles: OVERSIGHT,
     planned: ["Employee records and assigned cards", "Activity attributed by card scan"],
-    requires: "Employee API and inventory ESP32 RFID reader (Phase 9).",
+    requires: "RFID card API and the inventory ESP32 RFID reader (Phase 9). Staff accounts are managed through the backend API for now.",
   },
   {
     id: "reports",
@@ -267,7 +267,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     path: "settings",
     label: "Settings",
     title: "Settings",
-    summary: "Your display preferences.",
+    summary: "Your display preferences and password.",
     icon: Settings,
     group: "System",
     roles: ALL,
