@@ -203,7 +203,7 @@ A phase is complete only after its functionality has been tested. Do not present
 
 ## Getting started
 
-This repository is an initial project structure. Add the application source code to the relevant folders as development progresses.
+See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for what is implemented and tested.
 
 ### Clone the repository
 
@@ -212,14 +212,35 @@ git clone https://github.com/<YOUR-GITHUB-USERNAME>/ECOPANTRY.git
 cd ECOPANTRY
 ```
 
-### Suggested local development arrangement
+### Local development environment
 
-- Frontend: run the Vite development server from `website/frontend/`.
-- Backend: run the FastAPI application from `website/backend/`.
-- Database: configure PostgreSQL using local environment variables.
-- Firmware: open the relevant firmware directory in PlatformIO.
+Implemented so far: the frontend (`website/frontend/`), the backend foundation
+(`website/backend/`) and a local PostgreSQL container (`compose.yaml`). The
+development setup uses Podman and podman-compose (Fedora); Docker Engine is not
+required. Full setup steps are in [website/backend/README.md](website/backend/README.md)
+and [website/frontend/README.md](website/frontend/README.md).
 
-Each application component should eventually include its own setup instructions and dependency files.
+Once set up, run each in its own terminal:
+
+```bash
+# 1. PostgreSQL (repository root)
+podman-compose up -d
+podman-compose ps                       # wait for "healthy"
+
+# 2. FastAPI on http://127.0.0.1:8000 (website/backend)
+.venv/bin/alembic upgrade head
+.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# 3. Website and portal on http://localhost:5173 (website/frontend)
+npm run dev                             # proxies /api/v1 to FastAPI
+```
+
+Stop PostgreSQL with `podman-compose stop`. The data stays in the
+`ecopantry_pgdata` volume; `podman-compose down -v` would delete it.
+
+Firmware: open the relevant firmware directory in PlatformIO (not started yet).
+
+Each application component includes its own setup instructions and dependency files.
 
 ### Environment variables
 
@@ -232,7 +253,9 @@ Examples of configuration categories:
 - Device API credentials.
 - Public frontend URL.
 
-Use `.env.example` files containing placeholder values only.
+Use `.env.example` files containing placeholder values only. Current ones:
+`.env.example` (PostgreSQL container), `website/backend/.env.example` and
+`website/frontend/.env.example`.
 
 ## Hardware and safety notes
 

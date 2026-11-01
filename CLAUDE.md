@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Only the frontend foundation exists (`website/frontend/`, Milestone 1). The backend, database and firmware directories are still empty scaffolds. `docs/PROJECT_STATUS.md` is the checklist of what is implemented; update it as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
+Implemented: the frontend foundation (`website/frontend/`, Milestone 1) and the backend foundation (`website/backend/`, Milestone 2: settings, PostgreSQL via Podman, SQLAlchemy, Alembic baseline, health endpoints, error handling). There are no business tables or endpoints, and no authentication or backend RBAC yet. Firmware directories are still empty scaffolds. `docs/PROJECT_STATUS.md` is the checklist of what is implemented; update it as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
 
 When adding a component, give it its own dependency file and setup instructions (README expects this), plus a `.env.example` with placeholders only.
 
@@ -21,7 +21,36 @@ npx vitest run src/app/routes.test.tsx    # one file; add -t "test name" for one
 npm run test:e2e                          # Playwright: every route, 375px + 1440px, light + dark
 ```
 
-`test:e2e` needs `npx playwright install chromium` once. It starts its own dev server with the portal preview on and writes screenshots to `e2e/.screenshots/` (git-ignored); look at them after UI changes.
+`test:e2e` needs `npx playwright install chromium` once. It starts its own dev server with the portal preview on and the API proxy pointed at a closed port, and writes screenshots to `e2e/.screenshots/` (git-ignored); look at them after UI changes.
+
+Database, from the repository root. This machine uses **Podman and podman-compose, not Docker**; credentials are in the git-ignored root `.env`:
+
+```bash
+podman-compose up -d          # PostgreSQL 18 on 127.0.0.1:5432, volume ecopantry_pgdata
+podman-compose ps             # should show (healthy)
+podman-compose stop           # keeps data. Never run `down -v` or remove the volume.
+```
+
+Backend, run from `website/backend/` (venv in `.venv`, settings in git-ignored `.env`):
+
+```bash
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/alembic upgrade head
+.venv/bin/alembic revision --autogenerate -m "..."   # after model changes; review the file
+.venv/bin/pytest                                     # needs PostgreSQL running
+.venv/bin/pytest -m "not integration"                # no database needed
+.venv/bin/pytest tests/test_health.py -k readiness   # one test
+```
+
+## Backend architecture
+
+- `app/factory.py` `create_app(settings)` builds the app; `app/main.py` is the uvicorn entry point. Tests build apps with their own settings (see `tests/conftest.py`), so unit tests never read `.env`.
+- Settings: `app/core/config.py` only. `DATABASE_URL` is a `SecretStr`, must be PostgreSQL, and is normalised to `postgresql+psycopg`. Alembic reads it from settings, never from `alembic.ini`. No SQLite anywhere, including tests.
+- Database: `app/db/session.py` `Database` (engine + sessionmaker, stored on `app.state`) and `SessionDep` for routes. Sessions don't auto-commit. Models subclass `app.db.base.Base` and must be imported in `app/models/__init__.py` for autogenerate.
+- Routes: one module per feature in `app/api/v1/routes/`, included in `app/api/v1/router.py` under `/api/v1`. Schemas in `app/schemas/`.
+- Errors: raise `AppError` subclasses from `app/core/errors.py`. Every error response is `{detail, code, errors?}`; the frontend client shows `detail`. Never echo submitted values or internal errors in responses.
+- Integration tests are marked `@pytest.mark.integration`. Tests that need a migrated database create a throwaway `ecopantry_test_*` database (see `tests/test_migrations.py`); don't write to the development database from tests.
 
 ## Frontend architecture
 
@@ -30,7 +59,7 @@ npm run test:e2e                          # Playwright: every route, 375px + 144
 - Role checks in the frontend are UX only. The backend must enforce the same role lists on every endpoint.
 - Auth: `features/auth/AuthProvider.tsx` holds the session in memory. `signIn` posts to `/auth/login` and validates the response with Zod. The backend will issue an httpOnly cookie session (the API client sends `credentials: "include"`); don't store tokens in localStorage. There is no real backend yet, so sign-in shows "Can't reach the EcoPantry server".
 - Development-only portal preview: `VITE_PORTAL_PREVIEW=true` in `.env.local` creates a fake session with a role switcher and a warning banner. It is gated by `import.meta.env.DEV`, so it is removed from production builds (verify with a grep of `dist/` if you touch it).
-- API calls go through `src/lib/api/client.ts` (`apiRequest`, `ApiError`). The base URL comes from `VITE_API_BASE_URL` and defaults to `/api/v1`. Use TanStack Query for server state.
+- API calls go through `src/lib/api/client.ts` (`apiRequest`, `ApiError`). The base URL comes from `VITE_API_BASE_URL` and defaults to `/api/v1`, which `vite.config.ts` proxies to FastAPI (`API_PROXY_TARGET`, default `http://127.0.0.1:8000`). A non-JSON 404/405/502-504 means "no backend" (the proxy answers 502 when FastAPI is down). Use TanStack Query for server state.
 - Theme: `features/theme/`, plus an inline script in `index.html` that applies the saved theme before first paint. The storage key `ecopantry-theme` is duplicated in both places.
 - Public bakery details (contact, hours) live in `src/config/site.ts` as `null` until the owners provide them. Null fields are hidden, never filled with invented values.
 - shadcn/ui (radix base, "nova" style). Components import `cn` from `@/lib/utils`, which re-exports the `cn` package (shadcn's clsx + tailwind-merge replacement). Only components actually used are installed. Remove unused ones rather than keeping them around.

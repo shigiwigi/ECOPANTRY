@@ -14,7 +14,14 @@ cp .env.example .env.local   # then edit; .env.local is git-ignored
 npm run dev                   # http://localhost:5173
 ```
 
-To review portal layouts before the backend exists, set
+The dev server proxies `/api/v1` to FastAPI at `http://127.0.0.1:8000`
+(change it with `API_PROXY_TARGET` in `.env.local`), so the browser talks to
+the API on the same origin. Start the backend as described in
+`website/backend/README.md`. Without it, API calls get a 502 from the proxy
+and the app shows "Can't reach the EcoPantry server". The Playwright tests
+point the proxy at a closed port, so they don't depend on a running backend.
+
+To review portal layouts without signing in, set
 `VITE_PORTAL_PREVIEW=true` in `.env.local`. This creates a development-only
 preview session with a role switcher. It is removed from production builds
 and grants no data access.
