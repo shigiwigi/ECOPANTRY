@@ -136,7 +136,7 @@ test.describe("interactions", () => {
   })
 
   test("sign-in against the bare dev server reports it unreachable and keeps focus", async ({ page }) => {
-    // No mock: the Vite dev server answers the login POST with an empty 404, as it does with no backend running.
+    // No mock: the dev server's /api/v1 proxy has no backend behind it and answers the login POST with a bare 502.
     await page.goto("/portal")
     await page.getByRole("button", { name: "Account menu" }).click()
     await page.getByRole("menuitem", { name: "Sign out" }).click()
