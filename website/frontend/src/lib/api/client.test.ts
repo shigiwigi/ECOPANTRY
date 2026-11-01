@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, apiRequest } from "./client"
+import { ApiError, apiRequest, onUnauthorized, setCsrfToken } from "./client"
 
 function mockFetch(response: Response | Error) {
   vi.stubGlobal(
@@ -59,5 +59,65 @@ describe("apiRequest", () => {
     const error = await requestError()
     expect(error.isUnreachable).toBe(false)
     expect(error.message).toBe("The server had a problem. Try again shortly.")
+  })
+})
+
+describe("session support", () => {
+  afterEach(() => {
+    setCsrfToken(null)
+    onUnauthorized(null)
+  })
+
+  function captureHeaders() {
+    const seen: Headers[] = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_: string, init: RequestInit = {}) => {
+        seen.push(new Headers(init.headers))
+        return Promise.resolve(json({ ok: true }, 200))
+      }),
+    )
+    return seen
+  }
+
+  it("sends cookies and the CSRF token only on unsafe methods", async () => {
+    const seen = captureHeaders()
+    setCsrfToken("token-123")
+    await apiRequest("/auth/me")
+    await apiRequest("/auth/logout", { method: "POST" })
+    await apiRequest("/things/1", { method: "delete" })
+    expect(seen[0].get("X-CSRF-Token")).toBeNull()
+    expect(seen[1].get("X-CSRF-Token")).toBe("token-123")
+    expect(seen[2].get("X-CSRF-Token")).toBe("token-123")
+    expect(vi.mocked(fetch).mock.calls[0][1]?.credentials).toBe("include")
+  })
+
+  it("sends no CSRF header once the token is cleared", async () => {
+    const seen = captureHeaders()
+    setCsrfToken("token-123")
+    setCsrfToken(null)
+    await apiRequest("/auth/logout", { method: "POST" })
+    expect(seen[0].get("X-CSRF-Token")).toBeNull()
+  })
+
+  it("reports a 401 to the session listener unless told not to", async () => {
+    const listener = vi.fn()
+    onUnauthorized(listener)
+    mockFetch(json({ detail: "Your session has ended. Sign in again.", code: "session_expired" }, 401))
+    const error = await requestError()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(error.code).toBe("session_expired")
+
+    mockFetch(json({ detail: "x", code: "invalid_credentials" }, 401))
+    await expect(apiRequest("/auth/login", { method: "POST", body: {}, ignoreUnauthorized: true })).rejects.toThrow()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it("doesn't report other errors as a lost session", async () => {
+    const listener = vi.fn()
+    onUnauthorized(listener)
+    mockFetch(json({ detail: "You don't have permission to do that.", code: "forbidden" }, 403))
+    expect((await requestError()).code).toBe("forbidden")
+    expect(listener).not.toHaveBeenCalled()
   })
 })

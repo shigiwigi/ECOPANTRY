@@ -10,6 +10,7 @@ from app import __version__
 from app.api.v1.router import api_router
 from app.core.config import API_V1_PREFIX, Settings, get_settings
 from app.core.errors import register_exception_handlers
+from app.core.middleware import NoStoreMiddleware
 from app.db.session import Database
 from app.schemas.errors import ErrorResponse
 
@@ -43,5 +44,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database = database
 
     register_exception_handlers(app)
+    app.add_middleware(NoStoreMiddleware, prefix=API_V1_PREFIX)
     app.include_router(api_router, prefix=API_V1_PREFIX)
     return app

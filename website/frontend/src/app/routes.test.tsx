@@ -8,13 +8,16 @@ import { ThemeProvider } from "@/features/theme/ThemeProvider"
 import { routes } from "./routes"
 
 function staff(role: Role): StaffUser {
-  return { id: "u1", name: "Test User", email: "test@example.com", role }
+  return { id: "u1", name: "Test User", email: "test@example.com", role, permissions: [] }
 }
 
 function renderAt(path: string, user: StaffUser | null = null) {
   const auth: AuthContextValue = {
     user,
+    status: "ready",
+    endReason: null,
     isPreview: false,
+    checkSession: vi.fn(),
     signIn: vi.fn(),
     signOut: vi.fn(),
     setPreviewRole: null,

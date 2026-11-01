@@ -59,3 +59,30 @@ def test_api_docs_are_disabled_in_production() -> None:
 
     assert client.get("/api/v1/openapi.json").status_code == 404
     assert client.get("/api/v1/docs").status_code == 404
+
+
+def test_session_cookie_is_plain_http_in_development_and_secure_in_production() -> None:
+    development = make_settings(environment="development")
+    production = make_settings(environment="production")
+
+    assert development.cookie_secure is False
+    assert development.session_cookie_name == "ecopantry_session"
+    assert production.cookie_secure is True
+    assert production.session_cookie_name == "__Host-ecopantry_session"
+
+
+def test_production_refuses_insecure_session_cookies() -> None:
+    with pytest.raises(ValidationError, match="SESSION_COOKIE_SECURE"):
+        make_settings(environment="production", session_cookie_secure=False)
+
+
+def test_secure_cookies_can_be_turned_on_outside_production() -> None:
+    settings = make_settings(environment="development", session_cookie_secure=True)
+
+    assert settings.cookie_secure is True
+    assert settings.session_cookie_name == "__Host-ecopantry_session"
+
+
+def test_api_responses_are_not_cached(client: TestClient) -> None:
+    assert client.get("/api/v1/health").headers["cache-control"] == "no-store"
+    assert client.get("/api/v1/does-not-exist").headers["cache-control"] == "no-store"

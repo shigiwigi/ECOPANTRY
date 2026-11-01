@@ -1,10 +1,11 @@
 """ORM models.
 
 Import every model module here so `Base.metadata` is complete when Alembic
-autogenerates migrations. There are no models yet: business modules
-(inventory, batches, suppliers, ...) add theirs in later milestones.
+autogenerates migrations.
 """
 
 from app.db.base import Base
+from app.models.audit import AuditEvent
+from app.models.auth import AuthSession, Employee, Permission, Role, role_permissions
 
-__all__ = ["Base"]
+__all__ = ["AuditEvent", "AuthSession", "Base", "Employee", "Permission", "Role", "role_permissions"]

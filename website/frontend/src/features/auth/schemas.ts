@@ -8,10 +8,41 @@ export const signInSchema = z.object({
 
 export type SignInValues = z.infer<typeof signInSchema>
 
-/** Expected shape of `POST /auth/login`; validated so a malformed response can't create a session. */
-export const staffUserSchema = z.object({
+/** The signed-in employee as `/auth/login` and `/auth/me` describe them. */
+const sessionUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
   role: z.enum(ROLES),
+  permissions: z.array(z.string()),
 })
+
+/**
+ * Response of `POST /auth/login` and `GET /auth/me`. Validated so a malformed
+ * response can't create a session in the UI.
+ */
+export const sessionResponseSchema = z.object({
+  user: sessionUserSchema,
+  csrf_token: z.string().min(1),
+  expires_at: z.string(),
+})
+
+export type SessionResponse = z.infer<typeof sessionResponseSchema>
+
+export const PASSWORD_MIN_LENGTH = 12
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password."),
+    newPassword: z
+      .string()
+      .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters.`)
+      .max(128, "Use at most 128 characters."),
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "The new passwords don't match.",
+  })
+
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>

@@ -42,6 +42,7 @@ export function PortalLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [signOutFailed, setSignOutFailed] = useState(false)
   const navigatedFromDrawer = useRef(false)
   const sidebarShown = useMediaQuery(SIDEBAR_QUERY)
   useFocusMainOnNavigate()
@@ -58,9 +59,15 @@ export function PortalLayout() {
   const modules = modulesForRole(user.role)
   const activeModule = currentModule(pathname)
 
-  const handleSignOut = () => {
-    signOut()
-    navigate("/portal/sign-in", { replace: true })
+  const handleSignOut = async () => {
+    setSignOutFailed(false)
+    try {
+      await signOut()
+      navigate("/portal/sign-in", { replace: true })
+    } catch {
+      // The server still has the session, so don't pretend the user is signed out.
+      setSignOutFailed(true)
+    }
   }
 
   return (
@@ -112,13 +119,20 @@ export function PortalLayout() {
                   <p className="mt-1 text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={handleSignOut}>
+                <DropdownMenuItem onSelect={() => void handleSignOut()}>
                   <LogOut aria-hidden />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
+
+          {signOutFailed && (
+            <p role="alert" className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6 lg:px-8">
+              Couldn't reach the EcoPantry server to sign you out, so you're still signed in. Check the connection and try
+              again.
+            </p>
+          )}
 
           {/* Bottom padding clears the fixed bottom bar (h-16 plus the home-indicator inset) below lg. */}
           <main

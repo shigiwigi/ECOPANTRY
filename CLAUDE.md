@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Implemented: the frontend foundation (`website/frontend/`, Milestone 1) and the backend foundation (`website/backend/`, Milestone 2: settings, PostgreSQL via Podman, SQLAlchemy, Alembic baseline, health endpoints, error handling). There are no business tables or endpoints, and no authentication or backend RBAC yet. Firmware directories are still empty scaffolds. `docs/PROJECT_STATUS.md` is the checklist of what is implemented; update it as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
+Implemented: the frontend foundation (`website/frontend/`, Milestone 1), the backend foundation (`website/backend/`, Milestone 2: settings, PostgreSQL via Podman, SQLAlchemy, Alembic, health endpoints, error handling) and staff authentication (Milestone 3: roles, permissions, employees, PostgreSQL sessions, CSRF, audit log, real portal sign-in; design in `docs/AUTH_DESIGN.md`). There are no business tables or endpoints (inventory, batches, ...) yet. Firmware directories are still empty scaffolds. `docs/PROJECT_STATUS.md` is the checklist of what is implemented; update it as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
 
 When adding a component, give it its own dependency file and setup instructions (README expects this), plus a `.env.example` with placeholders only.
 
@@ -19,9 +19,10 @@ npm run lint                              # oxlint
 npm test                                  # Vitest unit tests
 npx vitest run src/app/routes.test.tsx    # one file; add -t "test name" for one test
 npm run test:e2e                          # Playwright: every route, 375px + 1440px, light + dark
+npm run test:e2e:fullstack                # Playwright against real FastAPI + a throwaway PostgreSQL database
 ```
 
-`test:e2e` needs `npx playwright install chromium` once. It starts its own dev server with the portal preview on and the API proxy pointed at a closed port, and writes screenshots to `e2e/.screenshots/` (git-ignored); look at them after UI changes.
+`test:e2e` needs `npx playwright install chromium` once. It starts its own dev server with the portal preview on and the API proxy pointed at a closed port, and writes screenshots to `e2e/.screenshots/` (git-ignored); look at them after UI changes. `test:e2e:fullstack` needs PostgreSQL running and the backend set up; it runs `website/backend/scripts/e2e_server.py`, which creates and later drops `ecopantry_test_e2e` with seeded test accounts.
 
 Database, from the repository root. This machine uses **Podman and podman-compose, not Docker**; credentials are in the git-ignored root `.env`:
 
@@ -41,7 +42,10 @@ Backend, run from `website/backend/` (venv in `.venv`, settings in git-ignored `
 .venv/bin/pytest                                     # needs PostgreSQL running
 .venv/bin/pytest -m "not integration"                # no database needed
 .venv/bin/pytest tests/test_health.py -k readiness   # one test
+.venv/bin/python -m app.cli create-admin --email … --name "…"   # first administrator (prompts for password)
 ```
+
+There is no default account. Never add one, and never accept passwords as CLI arguments (prompt or `--password-stdin`).
 
 ## Backend architecture
 
@@ -50,15 +54,18 @@ Backend, run from `website/backend/` (venv in `.venv`, settings in git-ignored `
 - Database: `app/db/session.py` `Database` (engine + sessionmaker, stored on `app.state`) and `SessionDep` for routes. Sessions don't auto-commit. Models subclass `app.db.base.Base` and must be imported in `app/models/__init__.py` for autogenerate.
 - Routes: one module per feature in `app/api/v1/routes/`, included in `app/api/v1/router.py` under `/api/v1`. Schemas in `app/schemas/`.
 - Errors: raise `AppError` subclasses from `app/core/errors.py`. Every error response is `{detail, code, errors?}`; the frontend client shows `detail`. Never echo submitted values or internal errors in responses.
-- Integration tests are marked `@pytest.mark.integration`. Tests that need a migrated database create a throwaway `ecopantry_test_*` database (see `tests/test_migrations.py`); don't write to the development database from tests.
+- Auth: `app/auth/`. Protect every route with `require_permission(Permission.X)` (or `CurrentPrincipal` for any signed-in employee) from `app/auth/dependencies.py`; it validates the session cookie and, for unsafe methods, the `X-CSRF-Token` header. `tests/test_route_protection.py` fails for any unprotected route not on its public list. Permissions live in the database (seeded by migration `0002`) and are mirrored in `app/auth/permissions.py`; adding one needs a migration plus an update there (`tests/test_permissions.py` checks they match). Inspectors only get read permissions.
+- Audit: record changes with `app.services.audit.record_event` in the same transaction. `audit_events` is append-only (DB trigger). Never put passwords, tokens or hashes in audit details or logs.
+- Employees are never deleted; deactivate them (`app/services/employees.py`, shared by the API and `app/cli.py`).
+- Integration tests are marked `@pytest.mark.integration`. Tests that need a migrated database use throwaway `ecopantry_test_*` databases (fixtures in `tests/conftest.py`: `api`, `db`, `make_employee`, `sign_in`); don't write to the development database from tests.
 
 ## Frontend architecture
 
 - One Vite app, two route groups in `src/app/routes.tsx`: the public site under `/` (`PublicLayout`) and the portal under `/portal` (`RequireAuth` → lazy `PortalLayout`). Every page is lazy-loaded, so public visitors never download portal code.
 - `src/config/portal-modules.ts` is the single source of truth for the portal. Each module's path, nav label and group, page title and summary, allowed roles, planned capabilities, and what it's waiting on are defined there. The sidebar, the routes and the per-route `RequireRole` guard all read it. To add a module, add an entry. `MOBILE_TAB_IDS` there picks the few modules on the mobile/tablet bottom bar; everything else is under its More drawer. Modules without an API render the generic `pages/portal/ModulePage.tsx` (honest "not connected" state). Once its API exists, register a real page in `CUSTOM_PAGES` in `routes.tsx`.
 - Role checks in the frontend are UX only. The backend must enforce the same role lists on every endpoint.
-- Auth: `features/auth/AuthProvider.tsx` holds the session in memory. `signIn` posts to `/auth/login` and validates the response with Zod. The backend will issue an httpOnly cookie session (the API client sends `credentials: "include"`); don't store tokens in localStorage. There is no real backend yet, so sign-in shows "Can't reach the EcoPantry server".
-- Development-only portal preview: `VITE_PORTAL_PREVIEW=true` in `.env.local` creates a fake session with a role switcher and a warning banner. It is gated by `import.meta.env.DEV`, so it is removed from production builds (verify with a grep of `dist/` if you touch it).
+- Auth: `features/auth/AuthProvider.tsx` holds the signed-in user in memory. The session is an HttpOnly cookie from FastAPI; the CSRF token from `/auth/login` and `/auth/me` is kept in memory by `src/lib/api/client.ts` (`setCsrfToken`) and sent as `X-CSRF-Token` on unsafe methods. Never store tokens in localStorage/sessionStorage. `RequireAuth` calls `/auth/me` on first portal entry (public pages never call the API). Any 401 from `apiRequest` ends the session in the UI (`onUnauthorized`); pass `ignoreUnauthorized` only for the session endpoints themselves. `user.permissions` comes from the backend and is for hiding controls only.
+- Development-only portal preview: `VITE_PORTAL_PREVIEW=true` in `.env.local` creates a fake session with a role switcher and a warning banner (no cookie, no permissions; the API refuses it). It is gated by `import.meta.env.DEV`, so it is removed from production builds (verify with `grep -r "Development preview" dist/` if you touch it).
 - API calls go through `src/lib/api/client.ts` (`apiRequest`, `ApiError`). The base URL comes from `VITE_API_BASE_URL` and defaults to `/api/v1`, which `vite.config.ts` proxies to FastAPI (`API_PROXY_TARGET`, default `http://127.0.0.1:8000`). A non-JSON 404/405/502-504 means "no backend" (the proxy answers 502 when FastAPI is down). Use TanStack Query for server state.
 - Public pages use the `container-page` utility (`globals.css`) for one shared content width and gutters; don't hand-roll `max-w-*`/`px-*` containers.
 - Theme: `features/theme/`, plus an inline script in `index.html` that applies the saved theme before first paint. The storage key `ecopantry-theme` is duplicated in both places.

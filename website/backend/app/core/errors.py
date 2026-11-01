@@ -30,11 +30,38 @@ class AppError(Exception):
     code: str = "bad_request"
     detail: str = "The request could not be processed."
 
-    def __init__(self, detail: str | None = None, *, code: str | None = None, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        detail: str | None = None,
+        *,
+        code: str | None = None,
+        status_code: int | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.detail = detail or self.detail
         self.code = code or self.code
         self.status_code = status_code or self.status_code
+        # Extra response headers, e.g. a Set-Cookie that clears an invalid session.
+        self.headers = headers
         super().__init__(self.detail)
+
+
+class NotAuthenticatedError(AppError):
+    status_code = 401
+    code = "not_authenticated"
+    detail = "Sign in to continue."
+
+
+class ForbiddenError(AppError):
+    status_code = 403
+    code = "forbidden"
+    detail = "You don't have permission to do that."
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+    code = "too_many_requests"
+    detail = "Too many requests. Try again shortly."
 
 
 class NotFoundError(AppError):
@@ -72,7 +99,7 @@ def _response(status_code: int, body: ErrorResponse, headers: dict[str, str] | N
 
 async def _app_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
-    return _response(exc.status_code, ErrorResponse(detail=exc.detail, code=exc.code))
+    return _response(exc.status_code, ErrorResponse(detail=exc.detail, code=exc.code), headers=exc.headers)
 
 
 async def _http_error(_: Request, exc: Exception) -> JSONResponse:

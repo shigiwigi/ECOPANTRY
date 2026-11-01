@@ -215,7 +215,9 @@ cd ECOPANTRY
 ### Local development environment
 
 Implemented so far: the frontend (`website/frontend/`), the backend foundation
-(`website/backend/`) and a local PostgreSQL container (`compose.yaml`). The
+and staff authentication (`website/backend/`, design in
+[docs/AUTH_DESIGN.md](docs/AUTH_DESIGN.md)) and a local PostgreSQL container
+(`compose.yaml`). The
 development setup uses Podman and podman-compose (Fedora); Docker Engine is not
 required. Full setup steps are in [website/backend/README.md](website/backend/README.md)
 and [website/frontend/README.md](website/frontend/README.md).
@@ -229,6 +231,7 @@ podman-compose ps                       # wait for "healthy"
 
 # 2. FastAPI on http://127.0.0.1:8000 (website/backend)
 .venv/bin/alembic upgrade head
+.venv/bin/python -m app.cli create-admin --email you@example.com --name "Your Name"   # once; prompts for a password
 .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # 3. Website and portal on http://localhost:5173 (website/frontend)

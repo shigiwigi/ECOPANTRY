@@ -1,22 +1,13 @@
-import secrets
 from collections.abc import Iterator
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import make_url
 
-from app.core.config import BACKEND_DIR, Settings
+from app.core.config import Settings
 
-from .conftest import UNREACHABLE_DATABASE_URL
-
-
-def alembic_config(database_url: str) -> Config:
-    config = Config(BACKEND_DIR / "alembic.ini")
-    config.attributes["database_url"] = database_url
-    return config
+from .conftest import UNREACHABLE_DATABASE_URL, alembic_config, scratch_database
 
 
 def test_migration_history_has_a_single_head() -> None:
@@ -33,26 +24,16 @@ def test_migrations_render_as_sql_offline(capsys: pytest.CaptureFixture[str]) ->
 
 
 @pytest.fixture
-def scratch_database(database_settings: Settings) -> Iterator[str]:
-    """A throwaway database on the dev PostgreSQL server, so tests never touch real data."""
-    server_url = make_url(database_settings.database_url.get_secret_value())
-    name = f"ecopantry_test_{secrets.token_hex(4)}"
-    admin = create_engine(server_url, isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as connection:
-            connection.execute(text(f'CREATE DATABASE "{name}"'))
-        yield server_url.set(database=name).render_as_string(hide_password=False)
-    finally:
-        with admin.connect() as connection:
-            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
+def empty_database(database_settings: Settings) -> Iterator[str]:
+    with scratch_database(database_settings.database_url.get_secret_value()) as url:
+        yield url
 
 
 @pytest.mark.integration
-def test_migrations_upgrade_and_downgrade_on_postgres(scratch_database: str) -> None:
-    config = alembic_config(scratch_database)
+def test_migrations_upgrade_and_downgrade_on_postgres(empty_database: str) -> None:
+    config = alembic_config(empty_database)
     head = ScriptDirectory.from_config(config).get_current_head()
-    engine = create_engine(scratch_database)
+    engine = create_engine(empty_database)
     try:
         command.upgrade(config, "head")
         with engine.connect() as connection:
@@ -63,5 +44,100 @@ def test_migrations_upgrade_and_downgrade_on_postgres(scratch_database: str) -> 
         with engine.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM alembic_version")).scalar_one() == 0
             assert set(inspect(connection).get_table_names()) == {"alembic_version"}
+    finally:
+        engine.dispose()
+
+
+AUTH_TABLES = {"roles", "permissions", "role_permissions", "employees", "auth_sessions", "audit_events"}
+
+
+@pytest.mark.integration
+def test_auth_migration_creates_tables_and_seeds_only_reference_data(empty_database: str) -> None:
+    config = alembic_config(empty_database)
+    engine = create_engine(empty_database)
+    try:
+        command.upgrade(config, "0001")
+        with engine.connect() as connection:
+            assert set(inspect(connection).get_table_names()) == {"alembic_version"}
+
+        command.upgrade(config, "0002")
+        with engine.connect() as connection:
+            assert AUTH_TABLES <= set(inspect(connection).get_table_names())
+            roles = connection.execute(text("SELECT code FROM roles ORDER BY code")).scalars().all()
+            assert roles == ["admin", "inspector", "storekeeper"]
+            # No accounts, sessions or audit events: the first administrator comes from the CLI.
+            for table in ("employees", "auth_sessions", "audit_events"):
+                assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+
+        command.downgrade(config, "0001")
+        with engine.connect() as connection:
+            assert not AUTH_TABLES & set(inspect(connection).get_table_names())
+            functions = connection.execute(
+                text("SELECT count(*) FROM pg_proc WHERE proname = 'audit_events_append_only'")
+            ).scalar_one()
+            assert functions == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.integration
+def test_models_match_the_migrated_schema(migrated_database_url: str) -> None:
+    """Same check as `alembic check`: autogenerate would find nothing to add."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from app.models import Base
+
+    engine = create_engine(migrated_database_url)
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection, opts={"compare_type": True})
+            assert compare_metadata(context, Base.metadata) == []
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.integration
+def test_audit_events_are_append_only(migrated_database_url: str) -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    engine = create_engine(migrated_database_url)
+    try:
+        with engine.begin() as connection:
+            event_id = connection.execute(
+                text("INSERT INTO audit_events (actor_type, action) VALUES ('cli', 'test.event') RETURNING id")
+            ).scalar_one()
+        for statement in (
+            "UPDATE audit_events SET action = 'test.changed' WHERE id = :id",
+            "DELETE FROM audit_events WHERE id = :id",
+        ):
+            with pytest.raises(DBAPIError, match="append-only"), engine.begin() as connection:
+                connection.execute(text(statement), {"id": event_id})
+        with engine.begin() as connection:
+            assert connection.execute(text("SELECT action FROM audit_events WHERE id = :id"), {"id": event_id}).scalar_one() == "test.event"
+            connection.execute(text("TRUNCATE audit_events"))
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.integration
+def test_employee_constraints_reject_inconsistent_rows(migrated_database_url: str) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_engine(migrated_database_url)
+    insert = text(
+        "INSERT INTO employees (id, email, full_name, role_id, status, password_hash, deactivated_at) "
+        "VALUES (gen_random_uuid(), :email, 'Someone', (SELECT id FROM roles WHERE code = 'inspector'), "
+        ":status, 'x', :deactivated_at)"
+    )
+    try:
+        bad_rows = [
+            {"email": "Mixed@Example.test", "status": "active", "deactivated_at": None},  # not normalized
+            {"email": "a@example.test", "status": "suspended", "deactivated_at": None},  # unknown status
+            {"email": "b@example.test", "status": "disabled", "deactivated_at": None},  # disabled without a date
+        ]
+        for row in bad_rows:
+            with pytest.raises(IntegrityError), engine.begin() as connection:
+                connection.execute(insert, row)
     finally:
         engine.dispose()

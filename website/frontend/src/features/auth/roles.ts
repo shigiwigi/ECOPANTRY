@@ -12,6 +12,15 @@ export interface StaffUser {
   name: string
   email: string
   role: Role
+  /**
+   * Permission codes from the backend (`inventory.view`, `batches.manage`, ...).
+   * For hiding controls only; the backend checks them on every request.
+   */
+  permissions: readonly string[]
+}
+
+export function hasPermission(user: StaffUser | null, permission: string): boolean {
+  return user !== null && user.permissions.includes(permission)
 }
 
 export function hasRole(user: StaffUser | null, allowed: readonly Role[]): boolean {
