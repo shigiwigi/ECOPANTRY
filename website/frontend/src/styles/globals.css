@@ -179,6 +179,25 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Shared page container for the public site: header, sections and footer line up on
+ * the same edges. Content caps at 80rem (1280px); gutters grow with the viewport and
+ * never sit under a notch in landscape.
+ */
+@utility container-page {
+  width: 100%;
+  margin-inline: auto;
+  --gutter: 1rem;
+  max-width: calc(80rem + 2 * var(--gutter));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left)) max(var(--gutter), env(safe-area-inset-right));
+  @media (width >= 40rem) {
+    --gutter: 1.5rem;
+  }
+  @media (width >= 64rem) {
+    --gutter: 2rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

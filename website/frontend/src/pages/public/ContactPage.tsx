@@ -8,7 +8,7 @@ export default function ContactPage() {
   useDocumentTitle("Contact")
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+    <div className="container-page py-10 sm:py-14 lg:py-16">
       <div className="max-w-3xl">
         <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl xl:text-5xl">Contact</h1>
 

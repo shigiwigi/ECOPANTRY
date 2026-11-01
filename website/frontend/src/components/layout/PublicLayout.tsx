@@ -1,13 +1,24 @@
-import { Menu } from "lucide-react"
+import { Menu, X } from "lucide-react"
 import { useRef, useState } from "react"
 import { Link, NavLink, Outlet } from "react-router"
 import { Logo } from "@/components/common/Logo"
 import { focusMainContent, useFocusMainOnNavigate } from "@/components/common/route-focus"
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/common/SkipLink"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { PUBLIC_NAV, siteConfig } from "@/config/site"
 import { ThemeMenu } from "@/features/theme/ThemeMenu"
+import { ThemeSelector } from "@/features/theme/ThemeSelector"
+import { useMediaQuery } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -16,10 +27,22 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "text-foreground underline decoration-gold decoration-2 underline-offset-8" : "text-muted-foreground hover:text-foreground",
   )
 
+/** Matches Tailwind's `md` breakpoint, where the inline navigation replaces the menu. */
+const DESKTOP_NAV_QUERY = "(width >= 48rem)"
+
 export function PublicLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const navigatedFromMenu = useRef(false)
+  const menuNavRef = useRef<HTMLElement>(null)
+  const desktopNav = useMediaQuery(DESKTOP_NAV_QUERY)
   useFocusMainOnNavigate()
+
+  // The menu button disappears at the desktop breakpoint; don't leave an orphaned drawer open.
+  const [prevWide, setPrevWide] = useState(desktopNav)
+  if (desktopNav !== prevWide) {
+    setPrevWide(desktopNav)
+    if (desktopNav) setMenuOpen(false)
+  }
 
   const closeMenuAfterNavigate = () => {
     navigatedFromMenu.current = true
@@ -29,9 +52,9 @@ export function PublicLayout() {
   return (
     <div className="flex min-h-dvh flex-col">
       <SkipLink />
-      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur-none">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:h-20 lg:px-8">
-          <Link to="/" className="text-primary rounded-md" aria-label={`${siteConfig.name} home`}>
+      <header className="sticky top-0 z-30 border-b bg-background">
+        <div className="container-page grid h-16 grid-cols-[1fr_auto] items-center gap-4 md:grid-cols-[1fr_auto_1fr] lg:h-20">
+          <Link to="/" className="justify-self-start rounded-md text-primary" aria-label={`${siteConfig.name} home`}>
             <Logo />
           </Link>
 
@@ -43,21 +66,29 @@ export function PublicLayout() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-1">
-            <ThemeMenu />
-            <Button asChild variant="outline" className="ml-1 hidden md:inline-flex lg:h-9 lg:px-4 lg:text-sm">
+          <div className="flex items-center gap-2 justify-self-end">
+            <ThemeMenu className="hidden md:inline-flex" />
+            <Button asChild variant="outline" className="hidden md:inline-flex lg:h-9 lg:px-4 lg:text-sm">
               <Link to="/portal">Staff sign-in</Link>
             </Button>
 
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon-lg" className="md:hidden" aria-label="Open menu">
+                <Button variant="outline" className="size-11 md:hidden" aria-label="Open menu">
                   <Menu className="size-5" aria-hidden />
                 </Button>
               </SheetTrigger>
               <SheetContent
                 side="right"
-                className="w-[min(20rem,85vw)]"
+                showCloseButton={false}
+                className="w-[min(22rem,88vw)] gap-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+                onOpenAutoFocus={(event) => {
+                  // Start on the current page's link so arrowing/tabbing begins where the reader is.
+                  const current = menuNavRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
+                  if (!current) return
+                  event.preventDefault()
+                  current.focus()
+                }}
                 onCloseAutoFocus={(event) => {
                   // After choosing a page, focus the new page rather than the menu button.
                   if (!navigatedFromMenu.current) return
@@ -66,37 +97,56 @@ export function PublicLayout() {
                   focusMainContent()
                 }}
               >
-                <SheetHeader>
-                  <SheetTitle>
+                <SheetHeader className="flex-row items-center justify-between gap-2 border-b px-4 py-0">
+                  <SheetTitle className="flex h-16 items-center text-primary">
                     <Logo />
                   </SheetTitle>
                   <SheetDescription className="sr-only">Site navigation</SheetDescription>
+                  <SheetClose asChild>
+                    <Button variant="ghost" className="-mr-1.5 size-11" aria-label="Close menu">
+                      <X className="size-5" aria-hidden />
+                    </Button>
+                  </SheetClose>
                 </SheetHeader>
-                <nav aria-label="Mobile" className="flex flex-col gap-1 px-4 pb-6">
-                  {PUBLIC_NAV.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      onClick={closeMenuAfterNavigate}
-                      className={({ isActive }) =>
-                        cn(
-                          "rounded-md px-3 py-3 text-base font-medium",
-                          isActive ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted",
-                        )
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  ))}
-                  <Link
-                    to="/portal"
-                    onClick={closeMenuAfterNavigate}
-                    className="mt-3 rounded-md border px-3 py-3 text-base font-medium hover:bg-muted"
-                  >
-                    Staff sign-in
-                  </Link>
-                </nav>
+
+                <div className="flex-1 overflow-y-auto px-3 py-4">
+                  <nav ref={menuNavRef} aria-label="Mobile">
+                    <ul className="flex flex-col gap-1">
+                      {PUBLIC_NAV.map((item) => (
+                        <li key={item.to}>
+                          <NavLink
+                            to={item.to}
+                            end={item.end}
+                            onClick={closeMenuAfterNavigate}
+                            className={({ isActive }) =>
+                              cn(
+                                "flex min-h-12 items-center rounded-md px-3 text-lg font-medium transition-colors",
+                                isActive
+                                  ? "bg-accent text-accent-foreground shadow-[inset_3px_0_0_var(--gold)]"
+                                  : "text-foreground hover:bg-muted",
+                              )
+                            }
+                          >
+                            {item.label}
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </nav>
+
+                  <div className="mt-4 border-t px-1 pt-4">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">For bakery staff</p>
+                    <Button asChild variant="outline" className="mt-2 h-12 w-full text-base">
+                      <Link to="/portal" onClick={closeMenuAfterNavigate}>
+                        Staff sign-in
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+
+                <SheetFooter className="border-t px-4 py-4">
+                  <ThemeSelector variant="compact" />
+                </SheetFooter>
               </SheetContent>
             </Sheet>
           </div>
@@ -107,18 +157,18 @@ export function PublicLayout() {
         <Outlet />
       </main>
 
-      <footer className="border-t bg-secondary/50">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8 lg:py-12 lg:text-base">
+      <footer className="border-t bg-secondary/50 pb-[env(safe-area-inset-bottom)]">
+        <div className="container-page flex flex-col gap-6 py-10 text-sm sm:flex-row sm:items-center sm:justify-between lg:py-12 lg:text-base">
           <div>
             <Logo className="text-primary" />
             <p className="mt-2 text-muted-foreground">{siteConfig.tagline}</p>
           </div>
-          <nav aria-label="Footer" className="-mx-1 flex flex-wrap gap-x-3 gap-y-1">
+          <nav aria-label="Footer" className="-mx-1 flex flex-wrap gap-x-4 gap-y-1">
             {PUBLIC_NAV.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
-                className="inline-flex min-h-8 items-center rounded-md px-1 text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-11 items-center rounded-md px-1 text-muted-foreground hover:text-foreground sm:min-h-8"
               >
                 {item.label}
               </Link>

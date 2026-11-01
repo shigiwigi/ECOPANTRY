@@ -68,15 +68,171 @@ for (const viewport of VIEWPORTS) {
   }
 }
 
+// Every width from small phones to large desktops. 375 and 1440 also get the full route sweep above.
+const LAYOUT_WIDTHS = [1440, 1280, 1024, 768, 412, 375]
+const LAYOUT_ROUTES = ["/", "/about", "/portal", "/portal/inventory", "/portal/waste", "/portal/settings"]
+
+for (const width of LAYOUT_WIDTHS) {
+  for (const theme of THEMES) {
+    test.describe(`layout ${width}px / ${theme}`, () => {
+      test.use({ viewport: { width, height: width < 800 ? 812 : 900 } })
+
+      for (const route of LAYOUT_ROUTES) {
+        test(`${route} fits the viewport`, async ({ page }) => {
+          const errors = collectErrors(page)
+          await useTheme(page, theme)
+          await page.goto(route)
+          await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+          expect(overflow, "horizontal page overflow").toBeLessThanOrEqual(0)
+          expect(errors).toEqual([])
+
+          if (route.startsWith("/portal")) await checkPortalLayout(page, width)
+          else await checkPublicLayout(page, width)
+        })
+      }
+    })
+  }
+}
+
+async function checkPublicLayout(page: Page, width: number) {
+  // Header, page content and footer share one container, so their left edges line up.
+  const logo = await page.getByRole("link", { name: "EcoPantry home" }).boundingBox()
+  const heading = await page.getByRole("heading", { level: 1 }).boundingBox()
+  const footerLogo = await page.locator("footer svg").first().boundingBox()
+  expect(Math.abs((logo?.x ?? 0) - (heading?.x ?? -99))).toBeLessThanOrEqual(1)
+  expect(Math.abs((logo?.x ?? 0) - (footerLogo?.x ?? -99))).toBeLessThanOrEqual(1)
+
+  const mainNav = page.getByRole("navigation", { name: "Main" })
+  if (width >= 768) {
+    await expect(mainNav).toBeVisible()
+    await expect(page.getByRole("button", { name: "Open menu" })).toBeHidden()
+    // The main navigation is centred in the header, not pushed around by the side groups.
+    const box = await mainNav.boundingBox()
+    const centre = (box?.x ?? 0) + (box?.width ?? 0) / 2
+    expect(Math.abs(centre - width / 2)).toBeLessThanOrEqual(2)
+  } else {
+    await expect(mainNav).toBeHidden()
+    const menu = await page.getByRole("button", { name: "Open menu" }).boundingBox()
+    expect(menu?.width).toBeGreaterThanOrEqual(44)
+  }
+
+  // Content is capped at 1280px on wide screens.
+  if (width >= 1440) {
+    const content = await page.locator("main .container-page").first().evaluate((el) => {
+      const style = getComputedStyle(el)
+      return el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    })
+    expect(content).toBeLessThanOrEqual(1280)
+    expect(content).toBeGreaterThanOrEqual(1200)
+  }
+}
+
+async function checkPortalLayout(page: Page, width: number) {
+  const sidebar = page.locator("aside")
+  const quick = page.getByRole("navigation", { name: "Quick" })
+  if (width >= 1024) {
+    await expect(sidebar).toBeVisible()
+    await expect(quick).toBeHidden()
+    return
+  }
+  await expect(sidebar).toBeHidden()
+  await expect(quick).toBeVisible()
+
+  // Tabs are comfortable touch targets.
+  for (const box of await quick.locator("a, button").evaluateAll((els) => els.map((el) => el.getBoundingClientRect()))) {
+    expect(box.height).toBeGreaterThanOrEqual(44)
+    expect(box.width).toBeGreaterThanOrEqual(44)
+  }
+
+  // Scrolled to the bottom, the last piece of content sits above the fixed bar.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  const barTop = (await quick.boundingBox())?.y ?? 0
+  const lastBottom = await page
+    .locator("main")
+    .evaluate((main) => Math.max(...[...main.querySelectorAll("*")].map((el) => el.getBoundingClientRect().bottom)))
+  expect(lastBottom).toBeLessThanOrEqual(barTop)
+}
+
 test.describe("interactions", () => {
   test("mobile portal drawer navigates and closes", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 })
     await page.goto("/portal")
-    await page.getByRole("button", { name: "Open navigation" }).click()
+    await page.getByRole("button", { name: "More modules" }).click()
     await page.getByRole("dialog").getByRole("link", { name: "Inventory" }).click()
     await expect(page).toHaveURL(/\/portal\/inventory$/)
     await expect(page.getByRole("dialog")).toBeHidden()
     await expect(page.getByRole("heading", { level: 1, name: "Ingredient inventory" })).toBeVisible()
+  })
+
+  test("portal bottom bar marks the active tab and More for other modules", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto("/portal/inventory")
+    const quick = page.getByRole("navigation", { name: "Quick" })
+    await expect(quick.getByRole("link", { name: "Inventory" })).toHaveAttribute("aria-current", "page")
+    await quick.getByRole("link", { name: "Alerts" }).click()
+    await expect(page).toHaveURL(/\/portal\/alerts$/)
+    await expect(quick.getByRole("link", { name: "Alerts" })).toHaveAttribute("aria-current", "page")
+
+    // A module that isn't a tab is reached through More, which opens the full navigation.
+    await quick.getByRole("button", { name: "More modules" }).click()
+    const drawer = page.getByRole("dialog")
+    await drawer.getByRole("link", { name: "Audit log" }).click()
+    await expect(page).toHaveURL(/\/portal\/audit$/)
+    await expect(quick.locator("[aria-current=page]")).toHaveCount(0)
+  })
+
+  test("portal drawer closes with Escape and returns focus to More", async ({ page }) => {
+    await page.setViewportSize({ width: 412, height: 915 })
+    await page.goto("/portal")
+    const more = page.getByRole("button", { name: "More modules" })
+    await more.click()
+    await expect(page.getByRole("dialog")).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("dialog")).toBeHidden()
+    await expect(more).toBeFocused()
+  })
+
+  test("portal drawer closes when the window grows into the sidebar layout", async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 900 })
+    await page.goto("/portal")
+    await page.getByRole("button", { name: "More modules" }).click()
+    await expect(page.getByRole("dialog")).toBeVisible()
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await expect(page.getByRole("dialog")).toBeHidden()
+  })
+
+  test("public menu traps focus, locks scrolling and closes with Escape", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto("/about")
+    const trigger = page.getByRole("button", { name: "Open menu" })
+    await trigger.click()
+    const drawer = page.getByRole("dialog")
+    await expect(drawer).toBeVisible()
+    // Focus starts on the current page's link.
+    await expect(drawer.getByRole("link", { name: "About" })).toBeFocused()
+    await expect(drawer.getByRole("link", { name: "About" })).toHaveAttribute("aria-current", "page")
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden")
+
+    for (let i = 0; i < 12; i++) await page.keyboard.press("Tab")
+    expect(await drawer.evaluate((el) => el.contains(document.activeElement))).toBe(true)
+
+    await page.keyboard.press("Escape")
+    await expect(drawer).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
+  test("public menu theme control switches theme", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.emulateMedia({ colorScheme: "light" })
+    await page.goto("/")
+    await page.getByRole("button", { name: "Open menu" }).click()
+    const drawer = page.getByRole("dialog")
+    await drawer.getByRole("radio", { name: "Dark" }).check({ force: true })
+    await expect(page.locator("html")).toHaveClass(/dark/)
+    await drawer.getByRole("button", { name: "Close menu" }).click()
+    await expect(drawer).toBeHidden()
   })
 
   test("mobile public menu navigates", async ({ page }) => {
@@ -167,7 +323,7 @@ test.describe("interactions", () => {
   test("mobile drawer hands focus to the new page after navigating", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 })
     await page.goto("/portal")
-    await page.getByRole("button", { name: "Open navigation" }).click()
+    await page.getByRole("button", { name: "More modules" }).click()
     await page.getByRole("dialog").getByRole("link", { name: "Suppliers" }).click()
     await expect(page.getByRole("dialog")).toBeHidden()
     await expect(page.locator("#main-content")).toBeFocused()

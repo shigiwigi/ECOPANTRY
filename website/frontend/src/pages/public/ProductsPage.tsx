@@ -11,7 +11,7 @@ export default function ProductsPage() {
   const canContact = hasContactDetails()
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+    <div className="container-page py-10 sm:py-14 lg:py-16">
       <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl xl:text-5xl">Products</h1>
       <p className="mt-2 max-w-2xl text-muted-foreground">
         Our finished breads, pastries and cakes will be listed here with descriptions and photos.
