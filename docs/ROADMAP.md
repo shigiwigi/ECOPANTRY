@@ -130,7 +130,7 @@ Follow-ups, tracked here so they aren't lost:
 | Staff-management screen (list, create, deactivate, reactivate, reset password) | API done, no UI. The Employees module is a placeholder. | Before or with M10, which owns the Employees module. Can move earlier if admins need it sooner. |
 | Changing an employee's role | Not implemented (API or UI) | With the staff-management screen |
 | Role/permission management screen | Not implemented. See decision D2. | Depends on D2 |
-| Production API routing, cookie and CORS setup | Not decided. See D3. | M13, but must be decided before any deployment |
+| Production API routing, cookie and CORS setup | Decided (D3); configuration in `render.yaml` and `website/frontend/vercel.json` | Done when the deployment is verified (docs/DEPLOYMENT.md) |
 | Per-IP rate limiting and trusted-proxy client IPs | Not implemented; belongs in the reverse proxy | M13 |
 | Separate least-privilege database role for the API (audit tamper-resistance) | Not implemented | M13 |
 | Scheduled session cleanup (`app.cli purge-sessions`) | Command exists, not scheduled | M13 |
@@ -321,9 +321,9 @@ separate.
 |---|---|---|
 | D1 | Which numbering is canonical: README phases or milestones | Use milestones (M0–M13) everywhere and update the README table and the "Phase N" texts in the portal |
 | D2 | Should roles and permissions be editable in the portal? | No. Keep the three fixed roles in code and migrations; allow changing an employee's role only. Editable permissions would break the backend/test mirror and are risky for a prototype. |
-| D3 | Production API routing | Serve the API under the site's own origin (route `/api/v1/*` from Cloudflare to Render). No code change, cookies keep working. |
-| D4 | Hosting confirmation (Cloudflare Pages, Render, Supabase PostgreSQL) | Confirm before M13; nothing depends on it earlier |
-| D5 | When to deploy a preview | After M4, with D3 decided |
+| D3 | Production API routing | **Decided (2026-11-02):** the API is served under the site's own origin; Vercel forwards `/api/v1/*` to Render (`website/frontend/vercel.json`). No code change, cookies keep working. See [DEPLOYMENT.md](DEPLOYMENT.md). |
+| D4 | Hosting confirmation | **Decided (2026-11-02):** Vercel (website), Render free web service (API), Neon free PostgreSQL (no 30-day expiry, unlike Render's free database). See [DEPLOYMENT.md](DEPLOYMENT.md). |
+| D5 | When to deploy a preview | **Decided:** now, for the project demonstration, from the `development` branch |
 | D6 | Product image storage | Store uploads behind the API (validated type and size, re-encoded) in object storage chosen with D4; until then, no images |
 | D7 | Contact form: store enquiries, email them, or both; spam protection; retention period; who reads them | Store in PostgreSQL, readable by administrators in the portal, honeypot field plus proxy rate limiting, 12-month retention, privacy note on the form |
 | D8 | Exact DHT sensor model | Confirm the part on the board before M9 |

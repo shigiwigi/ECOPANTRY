@@ -204,6 +204,7 @@ A phase is complete only after its functionality has been tested. Do not present
 ## Getting started
 
 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for what is implemented and tested.
+Hosting on free plans (Vercel, Render, Neon): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Clone the repository
 
