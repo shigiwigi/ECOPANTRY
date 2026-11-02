@@ -92,7 +92,7 @@ Not part of Milestone 3:
 - [ ] Changing an employee's role, and a staff-management screen in the portal (the API exists; the Employees module is still the Phase 9 placeholder)
 - [ ] Per-IP rate limiting (belongs in the reverse proxy at deployment)
 - [ ] A separate, less-privileged database role for the API (needed to make the audit log tamper-resistant against the app itself)
-- [ ] Deployment cookie/CORS setup. Planned hosting puts the frontend and API on different origins; see `docs/OVERNIGHT_REPORT.md` for the options
+- [x] Deployment cookie/CORS setup decided: one origin, Vercel forwards `/api/v1/*` to Render, no CORS (see Deployment below)
 
 ## Milestone 4: public website (in progress)
 
@@ -133,6 +133,18 @@ Not done yet:
 - [ ] Labels printed from batch records instead of typed values
 - [ ] Physical device and real Safari, Edge, Chrome-on-Android testing (checklist in QR_LABELS.md)
 - [ ] Expiry lists and FEFO
+
+## Deployment (configuration prepared, not yet deployed)
+
+Guide, environment variables, costs and checks: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+Prepared and checked locally (2026-11-02):
+- [x] `render.yaml` (Render free web service, Singapore, Python 3.14.3, migrations on start, health check) and `website/frontend/vercel.json` (Vite build, `/api/v1/*` forward, SPA routing, security headers allowing the camera for this site only)
+- [x] Production rehearsal: the committed backend files built in a fresh venv with `pip install .`, started with the Render start command and `ENVIRONMENT=production` against an empty throwaway database (migrations `0001`–`0003` applied, API docs 404, `no-store` on responses), served the production build through a same-origin proxy: `__Host-` Secure HttpOnly SameSite=Lax cookie, CSRF refusals (403), Storekeeper/Inspector permission refusals (403), admin CLI with `DATABASE_URL` overriding the local `.env`, the documented staff-account `curl` recipe, data kept and no migration re-run after a restart
+
+Not done yet:
+- [ ] Neon, Render and Vercel accounts and the first real deployment
+- [ ] The checklist in DEPLOYMENT.md run on the real URLs, including a physical phone for the camera
 
 ## Portal navigation and layout (2026-11-02)
 
