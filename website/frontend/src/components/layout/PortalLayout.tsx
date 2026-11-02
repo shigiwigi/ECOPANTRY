@@ -1,6 +1,6 @@
-import { LogOut } from "lucide-react"
+import { LogOut, ScanLine } from "lucide-react"
 import { useRef, useState } from "react"
-import { Link, Outlet, useLocation, useNavigate } from "react-router"
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import { DevPreviewBanner } from "@/components/common/DevPreviewBanner"
 import { Logo } from "@/components/common/Logo"
 import { focusMainContent, useFocusMainOnNavigate } from "@/components/common/route-focus"
@@ -11,15 +11,26 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { MOBILE_TAB_IDS, modulesForRole, PORTAL_MODULES, portalHref, type PortalModule } from "@/config/portal-modules"
+import {
+  MOBILE_TAB_IDS,
+  modulesForRole,
+  PORTAL_MODULES,
+  portalHref,
+  SCANNER_MODULE_ID,
+  type PortalModule,
+} from "@/config/portal-modules"
 import { useAuth } from "@/features/auth/auth-context"
 import { PORTAL_PREVIEW_ENABLED } from "@/features/auth/preview"
 import { ROLE_LABELS } from "@/features/auth/roles"
-import { ThemeMenu } from "@/features/theme/ThemeMenu"
+import { THEME_OPTIONS } from "@/features/theme/options"
+import type { ThemePreference } from "@/features/theme/theme"
+import { useTheme } from "@/features/theme/theme-context"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { PortalBottomNav } from "./PortalBottomNav"
 import { PortalNav } from "./PortalNav"
@@ -39,6 +50,7 @@ const SIDEBAR_QUERY = "(width >= 64rem)"
 
 export function PortalLayout() {
   const { user, signOut } = useAuth()
+  const { preference, setPreference } = useTheme()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -58,6 +70,7 @@ export function PortalLayout() {
   if (!user) return null
   const modules = modulesForRole(user.role)
   const activeModule = currentModule(pathname)
+  const scanner = modules.find((module) => module.id === SCANNER_MODULE_ID)
 
   const handleSignOut = async () => {
     setSignOutFailed(false)
@@ -102,10 +115,21 @@ export function PortalLayout() {
               {activeModule?.label ?? "Portal"}
             </p>
 
-            <ThemeMenu className="max-lg:size-10" />
+            {scanner && (
+              <Button
+                asChild
+                variant="outline"
+                className="h-11 gap-2 px-3 max-sm:w-11 max-sm:px-0 aria-[current=page]:border-primary aria-[current=page]:text-primary lg:h-9"
+              >
+                <NavLink to={portalHref(scanner)} aria-label="Scan a QR label">
+                  <ScanLine className="size-[18px]" aria-hidden />
+                  <span className="max-sm:sr-only">Scan</span>
+                </NavLink>
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="max-w-40 gap-2 max-lg:h-10 max-lg:px-2" aria-label="Account menu">
+                <Button variant="ghost" className="h-11 max-w-48 min-w-11 gap-2 px-2 lg:h-9 lg:min-w-0" aria-label="Account menu">
                   <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                     {user.name.charAt(0).toUpperCase()}
                   </span>
@@ -119,7 +143,17 @@ export function PortalLayout() {
                   <p className="mt-1 text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => void handleSignOut()}>
+                <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Theme</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={preference} onValueChange={(value) => setPreference(value as ThemePreference)}>
+                  {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+                    <DropdownMenuRadioItem key={value} value={value} className="max-lg:min-h-10">
+                      <Icon aria-hidden />
+                      {label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void handleSignOut()} className="max-lg:min-h-10">
                   <LogOut aria-hidden />
                   Sign out
                 </DropdownMenuItem>
@@ -140,7 +174,8 @@ export function PortalLayout() {
             tabIndex={-1}
             className="flex-1 px-4 pt-6 pb-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] outline-none sm:px-6 lg:px-8 lg:pb-6"
           >
-            <div className="mx-auto max-w-7xl 2xl:max-w-[1600px]">
+            {/* Full width of the content column: pages lay out their own grids instead of a narrow centred box. */}
+            <div className="min-w-0">
               <Outlet />
             </div>
           </main>

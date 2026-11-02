@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test"
 
-const PUBLIC_ROUTES = ["/", "/products", "/products/example", "/about", "/contact", "/no-such-page"]
+const PUBLIC_ROUTES = ["/", "/products", "/products/sourdough-loaf", "/products/example", "/about", "/contact", "/no-such-page"]
 const PORTAL_ROUTES = [
   "/portal",
   "/portal/alerts",
   "/portal/inventory",
   "/portal/batches",
   "/portal/expiry",
+  "/portal/scan",
   "/portal/qr",
   "/portal/suppliers",
   "/portal/environment",
@@ -17,6 +18,7 @@ const PORTAL_ROUTES = [
   "/portal/reports",
   "/portal/audit",
   "/portal/devices",
+  "/portal/catalogue",
   "/portal/settings",
   "/portal/no-such-module",
 ]
@@ -35,9 +37,48 @@ function collectErrors(page: Page) {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text())
+    if (message.type() !== "error") return
+    // Chrome logs every 4xx/5xx API answer. The pages handle those (and the tests check the
+    // resulting states), so only page-level errors and other console errors count here.
+    if (message.text().startsWith("Failed to load resource") && message.location().url.includes("/api/v1/")) return
+    errors.push(message.text())
   })
   return errors
+}
+
+// Test fixture for the public catalogue endpoints; never shipped. Includes a long name and
+// summary so wrapping is exercised, and a product without a price or category.
+const CATEGORIES = [
+  { slug: "breads", name: "Breads" },
+  { slug: "pastries", name: "Pastries" },
+  { slug: "cakes", name: "Cakes" },
+]
+const PRODUCTS = [
+  { slug: "sourdough-loaf", name: "Sourdough loaf", summary: "Slow-fermented over two days for a crisp crust.", category: CATEGORIES[0], price: "4.50", currency: "EUR" },
+  { slug: "rye", name: "Rye bread", summary: "Dense and dark.", category: CATEGORIES[0], price: "3.80", currency: "EUR" },
+  { slug: "croissant", name: "Croissant", summary: "Laminated by hand with cultured butter.", category: CATEGORIES[1], price: "1.90", currency: "EUR" },
+  {
+    slug: "seasonal-fruit-and-almond-frangipane-tart",
+    name: "Seasonal fruit and almond frangipane tart with a shortcrust base",
+    summary: "Whatever fruit is in season, baked into almond cream on a buttery shortcrust base, finished with a thin apricot glaze and toasted flaked almonds.",
+    category: CATEGORIES[2],
+    price: "24.00",
+    currency: "EUR",
+  },
+  { slug: "day-old-bread", name: "Day-old bread", summary: null, category: null, price: null, currency: null },
+]
+
+async function mockPublicCatalogue(page: Page) {
+  await page.route("**/api/v1/public/catalogue", (route) =>
+    route.fulfill({ json: { categories: CATEGORIES, products: PRODUCTS } }),
+  )
+  await page.route("**/api/v1/public/catalogue/products/*", (route) => {
+    const slug = new URL(route.request().url()).pathname.split("/").pop()
+    const product = PRODUCTS.find((candidate) => candidate.slug === slug)
+    return product
+      ? route.fulfill({ json: { ...product, description: "Made with our own starter.\n\nBaked every morning before we open." } })
+      : route.fulfill({ status: 404, json: { detail: "That product isn't available.", code: "not_found" } })
+  })
 }
 
 for (const viewport of VIEWPORTS) {
@@ -49,6 +90,7 @@ for (const viewport of VIEWPORTS) {
         test(`renders ${route}`, async ({ page }) => {
           const errors = collectErrors(page)
           await useTheme(page, theme)
+          await mockPublicCatalogue(page)
           await page.goto(route)
           await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
           await expect(page.locator("html")).toHaveClass(theme === "dark" ? /dark/ : /^(?!.*dark)/)
@@ -69,8 +111,18 @@ for (const viewport of VIEWPORTS) {
 }
 
 // Every width from small phones to large desktops. 375 and 1440 also get the full route sweep above.
-const LAYOUT_WIDTHS = [1440, 1280, 1024, 768, 412, 375]
-const LAYOUT_ROUTES = ["/", "/about", "/portal", "/portal/inventory", "/portal/waste", "/portal/settings"]
+const LAYOUT_WIDTHS = [1920, 1440, 1280, 1024, 768, 412, 375]
+const LAYOUT_ROUTES = [
+  "/",
+  "/about",
+  "/products",
+  "/portal",
+  "/portal/inventory",
+  "/portal/waste",
+  "/portal/settings",
+  "/portal/scan",
+  "/portal/qr",
+]
 
 for (const width of LAYOUT_WIDTHS) {
   for (const theme of THEMES) {
@@ -81,6 +133,7 @@ for (const width of LAYOUT_WIDTHS) {
         test(`${route} fits the viewport`, async ({ page }) => {
           const errors = collectErrors(page)
           await useTheme(page, theme)
+          await mockPublicCatalogue(page)
           await page.goto(route)
           await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
 
@@ -93,6 +146,42 @@ for (const width of LAYOUT_WIDTHS) {
         })
       }
     })
+  }
+}
+
+/** Top bar: page name on the left; the scan shortcut and account menu on the right edge, never overlapping. */
+async function checkPortalHeader(page: Page) {
+  const viewport = page.viewportSize()?.width ?? 0
+  const title = await page.locator("main").evaluate(() => {
+    const header = document.querySelector("header")
+    return header ? header.getBoundingClientRect() : null
+  })
+  const scan = await page.getByRole("link", { name: "Scan a QR label" }).boundingBox()
+  const account = await page.getByRole("button", { name: "Account menu" }).boundingBox()
+  expect(scan && account && title).toBeTruthy()
+  if (!scan || !account || !title) return
+  // Account menu sits at the header's right edge (within its padding), scan button just before it.
+  expect(title.right - (account.x + account.width)).toBeLessThanOrEqual(21)
+  expect(title.right).toBeLessThanOrEqual(viewport)
+  expect(scan.x + scan.width).toBeLessThanOrEqual(account.x)
+  expect(scan.y + scan.height).toBeLessThanOrEqual(title.bottom)
+}
+
+async function checkFooter(page: Page, width: number) {
+  const footer = page.locator("footer")
+  const box = await footer.boundingBox()
+  const links = footer.getByRole("navigation", { name: "Footer" })
+  if (width >= 768) {
+    // Compact: one band, not a tall block.
+    expect(box?.height ?? 999).toBeLessThanOrEqual(150)
+    // Links sit under the main navigation's centre, not pushed against the right edge.
+    const nav = await links.boundingBox()
+    const centre = (nav?.x ?? 0) + (nav?.width ?? 0) / 2
+    expect(Math.abs(centre - width / 2)).toBeLessThanOrEqual(2)
+  } else {
+    for (const link of await links.getByRole("link").all()) {
+      expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    }
   }
 }
 
@@ -118,6 +207,8 @@ async function checkPublicLayout(page: Page, width: number) {
     expect(menu?.width).toBeGreaterThanOrEqual(44)
   }
 
+  await checkFooter(page, width)
+
   // Content is capped at 1280px on wide screens.
   if (width >= 1440) {
     const content = await page.locator("main .container-page").first().evaluate((el) => {
@@ -132,9 +223,16 @@ async function checkPublicLayout(page: Page, width: number) {
 async function checkPortalLayout(page: Page, width: number) {
   const sidebar = page.locator("aside")
   const quick = page.getByRole("navigation", { name: "Quick" })
+  await checkPortalHeader(page)
   if (width >= 1024) {
     await expect(sidebar).toBeVisible()
     await expect(quick).toBeHidden()
+    // Content uses the width beside the sidebar instead of a narrow centred column.
+    const main = await page.locator("main").boundingBox()
+    const heading = await page.getByRole("heading", { level: 1 }).boundingBox()
+    const sidebarBox = await sidebar.boundingBox()
+    expect((heading?.x ?? 0) - ((sidebarBox?.x ?? 0) + (sidebarBox?.width ?? 0))).toBeLessThanOrEqual(33)
+    expect((main?.x ?? 0) + (main?.width ?? 0)).toBeGreaterThanOrEqual(width - 1)
     return
   }
   await expect(sidebar).toBeHidden()
@@ -155,6 +253,34 @@ async function checkPortalLayout(page: Page, width: number) {
   expect(lastBottom).toBeLessThanOrEqual(barTop)
 }
 
+// Browser zoom shrinks the CSS viewport and raises the pixel ratio: 1440px at 200% is a 720px
+// viewport at 2x. Emulating it that way checks the layout the zoomed browser would compute.
+const ZOOMS = [1.25, 1.5, 2]
+const ZOOM_ROUTES = ["/", "/products", "/portal", "/portal/scan", "/portal/qr", "/portal/settings"]
+
+for (const zoom of ZOOMS) {
+  for (const base of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }]) {
+    test.describe(`zoom ${zoom * 100}% of ${base.width}px`, () => {
+      const width = Math.round(base.width / zoom)
+      test.use({ viewport: { width, height: Math.round(base.height / zoom) }, deviceScaleFactor: zoom })
+
+      for (const route of ZOOM_ROUTES) {
+        test(`${route} stays usable`, async ({ page }) => {
+          const errors = collectErrors(page)
+          await mockPublicCatalogue(page)
+          await page.goto(route)
+          await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+          expect(overflow, "horizontal page overflow").toBeLessThanOrEqual(0)
+          expect(errors).toEqual([])
+          if (route.startsWith("/portal")) await checkPortalLayout(page, width)
+          else await checkPublicLayout(page, width)
+        })
+      }
+    })
+  }
+}
+
 test.describe("interactions", () => {
   test("mobile portal drawer navigates and closes", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 })
@@ -171,9 +297,11 @@ test.describe("interactions", () => {
     await page.goto("/portal/inventory")
     const quick = page.getByRole("navigation", { name: "Quick" })
     await expect(quick.getByRole("link", { name: "Inventory" })).toHaveAttribute("aria-current", "page")
-    await quick.getByRole("link", { name: "Alerts" }).click()
-    await expect(page).toHaveURL(/\/portal\/alerts$/)
-    await expect(quick.getByRole("link", { name: "Alerts" })).toHaveAttribute("aria-current", "page")
+    await quick.getByRole("link", { name: "Environment" }).click()
+    await expect(page).toHaveURL(/\/portal\/environment$/)
+    await expect(quick.getByRole("link", { name: "Environment" })).toHaveAttribute("aria-current", "page")
+    // Alerts moved from the bar into the full navigation.
+    await expect(quick.getByRole("link", { name: "Alerts" })).toHaveCount(0)
 
     // A module that isn't a tab is reached through More, which opens the full navigation.
     await quick.getByRole("button", { name: "More modules" }).click()
@@ -244,6 +372,7 @@ test.describe("interactions", () => {
   })
 
   test("theme menu switches and persists across reloads", async ({ page }) => {
+    test.skip(!!test.info().project.use.isMobile, "Uses the desktop layout; the phone layout has its own tests")
     await page.emulateMedia({ colorScheme: "light" })
     await page.goto("/")
     await page.getByRole("button", { name: "Change theme" }).click()
@@ -307,6 +436,7 @@ test.describe("interactions", () => {
   })
 
   test("pages have their own titles and navigation moves focus to the new page", async ({ page }) => {
+    test.skip(!!test.info().project.use.isMobile, "Uses the desktop layout; the phone layout has its own tests")
     await page.goto("/")
     await expect(page).toHaveTitle("EcoPantry")
     await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Products" }).click()
@@ -342,11 +472,66 @@ test.describe("interactions", () => {
   })
 
   test("role-filtered navigation in preview", async ({ page }) => {
+    test.skip(!!test.info().project.use.isMobile, "Uses the desktop layout; the phone layout has its own tests")
     await page.goto("/portal")
     await page.getByLabel("View as").selectOption("inspector")
     const nav = page.getByRole("navigation", { name: "Portal" })
     await expect(nav.getByRole("link", { name: "Audit log" })).toBeVisible()
     await expect(nav.getByRole("link", { name: "QR labels" })).toHaveCount(0)
     await expect(nav.getByRole("link", { name: "Devices" })).toHaveCount(0)
+  })
+})
+
+test.describe("public catalogue", () => {
+  test("search and category filter work on a phone and keep the page width", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await mockPublicCatalogue(page)
+    await page.goto("/products")
+    await expect(page.getByRole("status")).toHaveText("5 products")
+    await expect(page.getByText("€4.50")).toBeVisible()
+
+    await page.getByLabel("Search").fill("almond")
+    await expect(page.getByRole("status")).toHaveText("Showing 1 of 5 products")
+    await expect(page).toHaveURL(/\?q=almond$/)
+
+    await page.getByLabel("Search").fill("")
+    await page.getByRole("group", { name: "Category" }).getByRole("button", { name: "Breads" }).click()
+    await expect(page.getByRole("status")).toHaveText("Showing 2 of 5 products")
+    await expect(page.getByRole("button", { name: "Breads" })).toHaveAttribute("aria-pressed", "true")
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    // The whole entry is clickable, and keyboard focus lands on the product link.
+    await page.getByRole("link", { name: "Rye bread" }).click()
+    await expect(page.getByRole("heading", { name: "Rye bread", level: 1 })).toBeVisible()
+    await expect(page).toHaveTitle("Rye bread | EcoPantry")
+  })
+
+  test("the product list says so when the server can't be reached", async ({ page }) => {
+    // No mock: the dev proxy has no backend and answers 502.
+    await page.goto("/products")
+    await expect(page.getByText("The product list can't be loaded right now")).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible()
+  })
+
+  test("unknown and unpublished products show not found", async ({ page }) => {
+    await mockPublicCatalogue(page)
+    await page.goto("/products/not-published")
+    await expect(page.getByRole("heading", { name: "Product not found", level: 1 })).toBeVisible()
+    await expect(page.getByRole("link", { name: "See all products" })).toBeVisible()
+  })
+
+  test("the public site never sends a request to the auth endpoints", async ({ page }) => {
+    const requests: string[] = []
+    page.on("request", (request) => requests.push(new URL(request.url()).pathname))
+    await mockPublicCatalogue(page)
+    for (const route of ["/", "/products", "/products/croissant", "/about", "/contact"]) {
+      await page.goto(route)
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+    }
+    const api = requests.filter((path) => path.startsWith("/api/"))
+    expect(api).toContain("/api/v1/public/catalogue")
+    expect(api.filter((path) => !path.startsWith("/api/v1/public/"))).toEqual([])
   })
 })

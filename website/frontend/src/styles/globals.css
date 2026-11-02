@@ -73,6 +73,14 @@
   --sidebar-accent-foreground: #fffdf8;
   --sidebar-border: #1d4637;
   --sidebar-ring: #d4bb72;
+
+  /*
+   * Printed labels and QR codes: pure black on white in both themes. Thermal and
+   * mono printers render any other colour as dithered grey, and inverted or tinted
+   * QR codes scan unreliably, so these deliberately don't follow the brand palette.
+   */
+  --label-ink: #000000;
+  --label-paper: #ffffff;
 }
 
 .dark {
@@ -120,6 +128,10 @@
   --sidebar-accent-foreground: #f6f0e2;
   --sidebar-border: #163a2e;
   --sidebar-ring: #cdb267;
+
+  /* Labels stay black on white in the dark theme too (see :root). */
+  --label-ink: #000000;
+  --label-paper: #ffffff;
 }
 
 @theme inline {
@@ -169,6 +181,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-label-ink: var(--label-ink);
+  --color-label-paper: var(--label-paper);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -227,4 +241,33 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+/*
+ * Printed batch label sheets (src/features/qr/LabelSheet.tsx). The sheet is
+ * rendered straight into <body> and hidden on screen. While it exists, printing
+ * shows only the sheet: no portal navigation, header or page content, and a white
+ * page even in the dark theme. Pages without a sheet print as usual.
+ */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  html:has(body > .print-sheet),
+  body:has(> .print-sheet) {
+    background: var(--label-paper) !important;
+  }
+  body:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+  .print-sheet {
+    display: block;
+    page: labels;
+  }
+}
+
+/* 7 mm margins fit three 63.5 mm columns on both A4 and US Letter. */
+@page labels {
+  margin: 7mm;
 }

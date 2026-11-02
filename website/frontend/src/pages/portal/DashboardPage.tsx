@@ -29,7 +29,8 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <PageHeader title={module.title} description={module.summary} />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* As many columns as fit at a readable card width, so wide screens use the space without stretching cards. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-4">
         {SECTIONS.map(({ moduleId, title, icon, empty }) => {
           const target = getModule(moduleId)
           const canOpen = hasRole(user, target.roles)

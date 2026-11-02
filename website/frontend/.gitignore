@@ -26,5 +26,7 @@ dist-ssr
 # Playwright
 e2e/.results/
 e2e/.results-fullstack/
+e2e/.results-browsers/
 e2e/.screenshots/
+e2e/.fake-camera/
 playwright-report/

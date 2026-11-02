@@ -20,6 +20,12 @@ def test_storekeepers_cannot_manage_staff_devices_or_see_the_audit_log() -> None
         assert permission not in held
 
 
+def test_only_administrators_manage_the_public_catalogue() -> None:
+    holders = {role for role, held in ROLE_PERMISSIONS.items() if Permission.CATALOGUE_MANAGE in held}
+
+    assert holders == {RoleCode.ADMIN}
+
+
 def test_every_permission_belongs_to_some_role() -> None:
     granted = frozenset().union(*ROLE_PERMISSIONS.values())
 
@@ -28,7 +34,7 @@ def test_every_permission_belongs_to_some_role() -> None:
 
 @pytest.mark.integration
 def test_database_seed_matches_the_code(migrated_database_url: str) -> None:
-    """Migration 0002 seeds roles and permissions; app/auth/permissions.py must say the same."""
+    """Migrations 0002 and 0003 seed roles and permissions; app/auth/permissions.py must say the same."""
     engine = create_engine(migrated_database_url)
     try:
         with engine.connect() as connection:

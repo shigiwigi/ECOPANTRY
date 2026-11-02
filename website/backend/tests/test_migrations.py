@@ -80,6 +80,61 @@ def test_auth_migration_creates_tables_and_seeds_only_reference_data(empty_datab
         engine.dispose()
 
 
+CATALOGUE_TABLES = {"catalogue_categories", "catalogue_products"}
+
+
+@pytest.mark.integration
+def test_catalogue_migration_adds_empty_tables_and_an_admin_only_permission(empty_database: str) -> None:
+    config = alembic_config(empty_database)
+    engine = create_engine(empty_database)
+    holders = text(
+        "SELECT r.code FROM role_permissions rp JOIN roles r ON r.id = rp.role_id "
+        "JOIN permissions p ON p.id = rp.permission_id WHERE p.code = 'catalogue.manage'"
+    )
+    try:
+        command.upgrade(config, "0003")
+        with engine.connect() as connection:
+            assert CATALOGUE_TABLES <= set(inspect(connection).get_table_names())
+            # No invented products or categories: the owners add them.
+            for table in CATALOGUE_TABLES:
+                assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+            assert connection.execute(holders).scalars().all() == ["admin"]
+
+        command.downgrade(config, "0002")
+        with engine.connect() as connection:
+            assert not CATALOGUE_TABLES & set(inspect(connection).get_table_names())
+            assert connection.execute(holders).scalars().all() == []
+            assert connection.execute(text("SELECT count(*) FROM permissions")).scalar_one() == 25
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.integration
+def test_catalogue_constraints_reject_inconsistent_rows(migrated_database_url: str) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_engine(migrated_database_url)
+    insert = text(
+        "INSERT INTO catalogue_products (id, slug, name, price, currency, is_published, published_at) "
+        "VALUES (gen_random_uuid(), :slug, 'Loaf', :price, :currency, :published, :published_at)"
+    )
+    good = {"slug": "loaf", "price": None, "currency": None, "published": False, "published_at": None}
+    try:
+        bad_rows = [
+            {**good, "slug": "Not A Slug"},
+            {**good, "price": 3, "currency": None},  # price without currency
+            {**good, "price": None, "currency": "EUR"},  # currency without price
+            {**good, "price": -1, "currency": "EUR"},
+            {**good, "price": 1, "currency": "eur"},
+            {**good, "published": True, "published_at": None},  # published without a date
+        ]
+        for row in bad_rows:
+            with pytest.raises(IntegrityError), engine.begin() as connection:
+                connection.execute(insert, row)
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.integration
 def test_models_match_the_migrated_schema(migrated_database_url: str) -> None:
     """Same check as `alembic check`: autogenerate would find nothing to add."""

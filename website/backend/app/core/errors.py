@@ -76,6 +76,14 @@ class ConflictError(AppError):
     detail = "The request conflicts with the current state."
 
 
+class NotAvailableYetError(AppError):
+    """A documented endpoint whose data doesn't exist yet (for example batch lookup before M6)."""
+
+    status_code = 501
+    code = "not_available_yet"
+    detail = "This isn't available yet."
+
+
 class ServiceUnavailableError(AppError):
     status_code = 503
     code = "service_unavailable"

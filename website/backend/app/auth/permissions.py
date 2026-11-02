@@ -51,6 +51,7 @@ class Permission(StrEnum):
     AUDIT_VIEW = "audit.view"
     DEVICES_VIEW = "devices.view"
     DEVICES_MANAGE = "devices.manage"
+    CATALOGUE_MANAGE = "catalogue.manage"
 
 
 P = Permission

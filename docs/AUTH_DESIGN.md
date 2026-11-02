@@ -91,7 +91,7 @@ Account lifecycle:
   is the way to remove access. It revokes every open session immediately.
 - An administrator can't deactivate their own account, and the last active
   administrator can't be deactivated, so the portal can't lock itself out.
-- RFID cards (Phase 9) will be a separate `rfid_cards` table referencing
+- RFID cards (README phase 9, roadmap M10) will be a separate `rfid_cards` table referencing
   `employees`. If some employees should have RFID but no portal login,
   `password_hash` can be made nullable then; that change is additive.
 
@@ -169,6 +169,9 @@ which only reads). The table is seeded by the migration and mirrored in
 | `audit.view` | ✓ | | ✓ |
 | `devices.view` | ✓ | | |
 | `devices.manage` | ✓ | | |
+| `catalogue.manage` | ✓ | | |
+
+`catalogue.manage` was added by migration `0003` with the public catalogue.
 
 The `.view` rows match the role lists in the frontend's
 `src/config/portal-modules.ts`. Most permissions protect endpoints that don't

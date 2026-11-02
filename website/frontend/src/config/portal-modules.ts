@@ -12,7 +12,9 @@ import {
   type LucideIcon,
   Package,
   QrCode,
+  ScanLine,
   Settings,
+  Store,
   ThermometerSun,
   Trash2,
   Truck,
@@ -63,6 +65,22 @@ export const PORTAL_MODULES: PortalModule[] = [
     icon: LayoutDashboard,
     group: "Overview",
     roles: ALL,
+  },
+  {
+    id: "environment",
+    path: "environment",
+    label: "Environment",
+    title: "Storage environment",
+    summary: "Temperature and humidity history from the inventory station.",
+    icon: ThermometerSun,
+    group: "Overview",
+    roles: ALL,
+    planned: [
+      "Readings with timestamps and last successful update",
+      "Configurable thresholds that raise alerts",
+      "Clear offline and stale states when readings stop",
+    ],
+    requires: "Inventory ESP32 with DHT sensor and the readings API (Phase 8).",
   },
   {
     id: "alerts",
@@ -128,16 +146,27 @@ export const PORTAL_MODULES: PortalModule[] = [
     requires: "Batch API with expiry dates (Phase 6).",
   },
   {
+    id: "scanner",
+    path: "scan",
+    label: "QR scanner",
+    tabLabel: "Scan",
+    title: "QR scanner",
+    summary: "Scan a batch label with this device's camera, or type its code, to look the batch up. Scanning never changes stock.",
+    icon: ScanLine,
+    group: "Stock",
+    // Matches the backend's `batches.view`, which every role holds.
+    roles: ALL,
+  },
+  {
     id: "qr",
     path: "qr",
     label: "QR labels",
     title: "QR labels",
-    summary: "Generate, print and scan batch labels. Scanning looks up a batch; it never changes stock on its own.",
+    summary: "Make and print QR labels for ingredient batches. A label carries only the batch code.",
     icon: QrCode,
     group: "Stock",
+    // Matches the backend's `qr_labels.manage` (administrators and storekeepers).
     roles: MANAGE,
-    planned: ["Printable QR labels per batch", "Browser camera scanning to open a batch"],
-    requires: "Batch API (Phase 6).",
   },
   {
     id: "suppliers",
@@ -150,23 +179,6 @@ export const PORTAL_MODULES: PortalModule[] = [
     roles: ALL,
     planned: ["Supplier records and contacts", "Batches received per supplier"],
     requires: "Supplier API (Phase 5).",
-  },
-  {
-    id: "environment",
-    path: "environment",
-    label: "Environment",
-    tabLabel: "Climate",
-    title: "Storage environment",
-    summary: "Temperature and humidity history from the inventory station.",
-    icon: ThermometerSun,
-    group: "Monitoring",
-    roles: ALL,
-    planned: [
-      "Readings with timestamps and last successful update",
-      "Configurable thresholds that raise alerts",
-      "Clear offline and stale states when readings stop",
-    ],
-    requires: "Inventory ESP32 with DHT sensor and the readings API (Phase 8).",
   },
   {
     id: "ph",
@@ -263,6 +275,18 @@ export const PORTAL_MODULES: PortalModule[] = [
     requires: "Device API (Phase 8).",
   },
   {
+    id: "catalogue",
+    path: "catalogue",
+    label: "Public catalogue",
+    title: "Public catalogue",
+    summary:
+      "Finished products shown on the customer website. Separate from ingredient inventory; only published products are public.",
+    icon: Store,
+    group: "System",
+    // Matches the backend's `catalogue.manage` permission (administrators only).
+    roles: ["admin"],
+  },
+  {
     id: "settings",
     path: "settings",
     label: "Settings",
@@ -276,10 +300,14 @@ export const PORTAL_MODULES: PortalModule[] = [
 
 /**
  * High-frequency modules pinned to the mobile/tablet bottom bar, in order. Every
- * other module stays one tap away under "More", which opens the full navigation.
- * Keep this short (four at most) so each tab stays a comfortable touch target.
+ * other module (Alerts included) stays one tap away under "More", which opens the
+ * full navigation. Three tabs plus More leaves room for full labels on a 320px
+ * phone. The QR scanner isn't a tab: it has its own button in the top bar.
  */
-export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "alerts", "inventory", "environment"]
+export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "inventory", "environment"]
+
+/** The module behind the top bar's scan shortcut. */
+export const SCANNER_MODULE_ID = "scanner"
 
 export function portalHref(module: PortalModule): string {
   return module.path ? `/portal/${module.path}` : "/portal"

@@ -110,9 +110,14 @@ def auth_settings(migrated_database_url: str) -> Settings:
 def auth_app(auth_settings: Settings) -> Iterator[FastAPI]:
     application = create_app(auth_settings)
     yield application
-    # Each test starts with no accounts. Roles and permissions (migration seed) stay.
+    # Each test starts with no accounts or catalogue entries. Roles and permissions (migration seed) stay.
     with application.state.database.engine.begin() as connection:
-        connection.execute(text("TRUNCATE audit_events, auth_sessions, employees RESTART IDENTITY"))
+        connection.execute(
+            text(
+                "TRUNCATE audit_events, auth_sessions, catalogue_products, catalogue_categories, employees "
+                "RESTART IDENTITY"
+            )
+        )
     application.state.database.dispose()
 
 
