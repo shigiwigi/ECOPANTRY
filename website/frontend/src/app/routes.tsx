@@ -10,6 +10,9 @@ import { RequireRole } from "@/features/auth/RequireRole"
 // Custom pages; every other module renders the generic ModulePage until its API exists.
 const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = {
   dashboard: () => import("@/pages/portal/DashboardPage"),
+  catalogue: () => import("@/pages/portal/CataloguePage"),
+  scanner: () => import("@/pages/portal/ScannerPage"),
+  qr: () => import("@/pages/portal/LabelsPage"),
   settings: () => import("@/pages/portal/SettingsPage"),
 }
 
@@ -48,7 +51,7 @@ export const routes: RouteObject[] = [
           { index: true, lazy: () => import("@/pages/public/HomePage").then((m) => ({ Component: m.default })) },
           { path: "products", lazy: () => import("@/pages/public/ProductsPage").then((m) => ({ Component: m.default })) },
           {
-            path: "products/:id",
+            path: "products/:slug",
             lazy: () => import("@/pages/public/ProductDetailPage").then((m) => ({ Component: m.default })),
           },
           { path: "about", lazy: () => import("@/pages/public/AboutPage").then((m) => ({ Component: m.default })) },

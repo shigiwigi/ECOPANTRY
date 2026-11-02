@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createMemoryRouter, RouterProvider } from "react-router"
@@ -26,13 +27,14 @@ const SESSION = {
   expires_at: "2026-11-02T12:00:00Z",
 }
 
-type Handler = (request: { url: string; method: string; headers: Headers; body: unknown }) => Response
+type ApiCall = { url: string; method: string; headers: Headers; body: unknown; credentials?: RequestCredentials }
+type Handler = (request: ApiCall) => Response
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 const noContent = () => new Response(null, { status: 204 })
 
-let calls: { url: string; method: string; headers: Headers; body: unknown }[] = []
+let calls: ApiCall[] = []
 
 function mockApi(routesByKey: Record<string, Handler>) {
   calls = []
@@ -45,6 +47,7 @@ function mockApi(routesByKey: Record<string, Handler>) {
         method,
         headers: new Headers(init.headers),
         body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+        credentials: init.credentials,
       }
       calls.push(request)
       const handler = routesByKey[`${method} ${url}`]
@@ -55,12 +58,15 @@ function mockApi(routesByKey: Record<string, Handler>) {
 
 function renderApp(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <ThemeProvider>
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
   return router
 }
@@ -77,11 +83,20 @@ beforeEach(() => setCsrfToken(null))
 afterEach(() => vi.unstubAllGlobals())
 
 describe("staff sign-in against the API", () => {
-  it("doesn't contact the server from the public website", async () => {
+  it("doesn't contact the server from the public home page", async () => {
     mockApi({})
     renderApp("/")
     await screen.findByRole("heading", { level: 1 })
     expect(calls).toEqual([])
+  })
+
+  it("loads the product list from the public endpoint only, without the staff cookie", async () => {
+    mockApi({ "GET /api/v1/public/catalogue": () => json({ categories: [], products: [] }) })
+    renderApp("/products")
+    await screen.findByText("The product list isn't published yet")
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["GET /api/v1/public/catalogue"])
+    expect(calls[0].credentials).toBe("omit")
+    expect(calls[0].headers.has("X-CSRF-Token")).toBe(false)
   })
 
   it("restores an existing session when the portal opens", async () => {

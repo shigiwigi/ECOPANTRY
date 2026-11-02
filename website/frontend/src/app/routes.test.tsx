@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import { createMemoryRouter, RouterProvider } from "react-router"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { hasContactDetails } from "@/config/site"
 import { AuthContext, type AuthContextValue } from "@/features/auth/auth-context"
 import type { Role, StaffUser } from "@/features/auth/roles"
@@ -23,15 +24,22 @@ function renderAt(path: string, user: StaffUser | null = null) {
     setPreviewRole: null,
   }
   const router = createMemoryRouter(routes, { initialEntries: [path] })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
-    <ThemeProvider>
-      <AuthContext.Provider value={auth}>
-        <RouterProvider router={router} />
-      </AuthContext.Provider>
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthContext.Provider value={auth}>
+          <RouterProvider router={router} />
+        </AuthContext.Provider>
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
   return router
 }
+
+// No backend in these tests: the dev proxy's answer when FastAPI isn't running.
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => new Response("Bad gateway", { status: 502 }))))
+afterEach(() => vi.unstubAllGlobals())
 
 describe("routing", () => {
   it("serves the public site without signing in", async () => {
@@ -102,9 +110,29 @@ describe("routing", () => {
   })
 
   it("only points to the contact page from the product list when contact details exist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ categories: [], products: [] })),
+    )
     renderAt("/products")
-    await screen.findByRole("heading", { name: "Products", level: 1 })
+    await screen.findByText("The product list isn't published yet")
     const link = screen.queryByRole("link", { name: "Contact the bakery" })
     expect(link !== null).toBe(hasContactDetails())
+  })
+
+  it("shows the catalogue module to administrators only", async () => {
+    renderAt("/portal", staff("admin"))
+    const nav = await screen.findByRole("navigation", { name: "Portal" })
+    expect(within(nav).getByRole("link", { name: "Public catalogue" })).toBeInTheDocument()
+  })
+
+  it("keeps storekeepers and inspectors out of the catalogue module", async () => {
+    for (const role of ["storekeeper", "inspector"] as const) {
+      renderAt("/portal/catalogue", staff(role))
+      expect(await screen.findByRole("heading", { name: "You don't have access to this page" })).toBeInTheDocument()
+      const nav = screen.getByRole("navigation", { name: "Portal" })
+      expect(within(nav).queryByRole("link", { name: "Public catalogue" })).not.toBeInTheDocument()
+      cleanup()
+    }
   })
 })

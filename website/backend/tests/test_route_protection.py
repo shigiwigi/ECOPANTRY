@@ -20,6 +20,9 @@ PUBLIC_ROUTES = {
     ("get", "/api/v1/health/ready"),  # readiness, no data
     ("post", "/api/v1/auth/login"),  # how a session starts
     ("post", "/api/v1/auth/logout"),  # ends a session if there is one; harmless without
+    # Customer website: published catalogue only, public fields only (see tests/test_catalogue.py).
+    ("get", "/api/v1/public/catalogue"),
+    ("get", "/api/v1/public/catalogue/products/{slug}"),
 }
 
 

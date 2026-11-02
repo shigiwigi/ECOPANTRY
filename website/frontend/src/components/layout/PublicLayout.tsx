@@ -1,4 +1,4 @@
-import { Menu, X } from "lucide-react"
+import { ArrowRight, Menu, X } from "lucide-react"
 import { useRef, useState } from "react"
 import { Link, NavLink, Outlet } from "react-router"
 import { Logo } from "@/components/common/Logo"
@@ -157,23 +157,33 @@ export function PublicLayout() {
         <Outlet />
       </main>
 
+      {/* Same three-column grid as the header: brand left, links centred under the main navigation, staff link right. */}
       <footer className="border-t bg-secondary/50 pb-[env(safe-area-inset-bottom)]">
-        <div className="container-page flex flex-col gap-6 py-10 text-sm sm:flex-row sm:items-center sm:justify-between lg:py-12 lg:text-base">
-          <div>
+        <div className="container-page grid gap-x-8 gap-y-4 py-6 text-sm md:grid-cols-[1fr_auto_1fr] md:items-center lg:py-8">
+          <div className="min-w-0">
             <Logo className="text-primary" />
-            <p className="mt-2 text-muted-foreground">{siteConfig.tagline}</p>
+            <p className="mt-1.5 text-muted-foreground">{siteConfig.tagline}</p>
           </div>
-          <nav aria-label="Footer" className="-mx-1 flex flex-wrap gap-x-4 gap-y-1">
+          <nav aria-label="Footer" className="-mx-2 flex flex-wrap gap-x-1">
             {PUBLIC_NAV.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
-                className="inline-flex min-h-11 items-center rounded-md px-1 text-muted-foreground hover:text-foreground sm:min-h-8"
+                className="inline-flex min-h-11 items-center rounded-md px-2 text-muted-foreground hover:text-foreground md:min-h-9"
               >
                 {item.label}
               </Link>
             ))}
           </nav>
+          <div className="md:justify-self-end">
+            <Link
+              to="/portal"
+              className="-mx-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 font-medium text-primary underline-offset-4 hover:underline md:min-h-9"
+            >
+              Staff portal
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

@@ -2,7 +2,7 @@
 
 import ipaddress
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal, Protocol
 
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -11,6 +11,15 @@ from app.models.audit import AuditEvent
 from app.models.auth import Employee
 
 ActorType = Literal["employee", "anonymous", "cli"]
+
+
+class AuditTarget(Protocol):
+    """A record an audit event can point at: any model with an `id` and an `audit_target_type` class attribute."""
+
+    audit_target_type: ClassVar[str]
+
+    @property
+    def id(self) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -41,7 +50,7 @@ def record_event(
     *,
     actor: Employee | None = None,
     actor_type: ActorType | None = None,
-    target: Employee | None = None,
+    target: AuditTarget | None = None,
     client: ClientInfo = CLI,
     details: dict[str, Any] | None = None,
 ) -> AuditEvent:
@@ -50,7 +59,7 @@ def record_event(
         action=action,
         actor_type=actor_type or ("employee" if actor else "anonymous"),
         actor_employee_id=actor.id if actor else None,
-        target_type="employee" if target else None,
+        target_type=target.audit_target_type if target else None,
         target_id=str(target.id) if target else None,
         ip_address=client.ip_address,
         user_agent=client.user_agent,

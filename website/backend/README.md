@@ -139,6 +139,22 @@ All routes are under `/api/v1`.
 | POST | `/api/v1/employees/{id}/deactivate` | `employees.manage`. Disables the account and ends all its sessions. You can't deactivate yourself or the last active administrator (`409`). |
 | POST | `/api/v1/employees/{id}/reactivate` | `employees.manage`. Re-enables the account and clears any lockout. |
 | POST | `/api/v1/employees/{id}/password` | `employees.manage`. Sets a new password and ends all that account's sessions. `204`. |
+| GET | `/api/v1/public/catalogue` | Public, no session. `{categories, products}`: published products only, with public fields only (`slug, name, summary, category {slug, name}, price, currency`). Categories without a published product are left out. `price` is a decimal string such as `"4.50"`, or null. |
+| GET | `/api/v1/public/catalogue/products/{slug}` | Public. One published product, plus `description`. Drafts and unknown slugs both answer `404 not_found`. |
+| GET | `/api/v1/catalogue/products` | `catalogue.manage` (Administrator). Every product, drafts included, with ids, state and timestamps. |
+| POST | `/api/v1/catalogue/products` | `catalogue.manage`. `{name, slug?, summary?, description?, category_id?, price?, currency?, is_published?}`. New products are drafts unless `is_published` is true. The slug is made from the name when left out (numbered if taken). Price and currency (ISO 4217) go together. `201`; `400 invalid_catalogue_entry`; `409` for a taken slug. |
+| PATCH | `/api/v1/catalogue/products/{id}` | `catalogue.manage`. Changes only the fields sent; `null` clears an optional field. `is_published` publishes or unpublishes. Renaming never changes the slug unless one is sent. |
+| DELETE | `/api/v1/catalogue/products/{id}` | `catalogue.manage`. `204`. |
+| GET | `/api/v1/catalogue/categories` | `catalogue.manage`. Categories with `product_count`. |
+| POST | `/api/v1/catalogue/categories` | `catalogue.manage`. `{name}`; names are unique ignoring case and the slug comes from the name. `201`; `409` for a duplicate. |
+| PATCH | `/api/v1/catalogue/categories/{id}` | `catalogue.manage`. `{name}` renames (the slug follows). |
+| DELETE | `/api/v1/catalogue/categories/{id}` | `catalogue.manage`. `204`; `409` while products still use it. |
+| GET | `/api/v1/batches/by-label/{code}` | `batches.view` (every role). Batch lookup for the portal's QR scanner. `code` is the 10-character label code (`422` otherwise). Until batch records exist (M6) a valid request answers `501 batch_lookup_unavailable`. Contract: `docs/QR_LABELS.md`. |
+
+Every catalogue change is written to the audit log (`catalogue.product_created`,
+`..._updated` with the changed field names, `..._published`, `..._unpublished`,
+`..._deleted`, and the `catalogue.category_*` equivalents). The public
+catalogue has no link to ingredient inventory, so it can't expose stock data.
 
 ### Sessions and CSRF
 
@@ -221,16 +237,17 @@ website/backend/
     auth/service.py      sign-in, lockout, sessions, password change
     auth/dependencies.py CurrentPrincipal, require_permission (session + CSRF checks)
     auth/cookies.py      session cookie settings
-    services/            employee lifecycle and audit events, shared by API and CLI
+    services/            employee lifecycle, catalogue and audit events, shared by API and CLI
     cli.py               python -m app.cli (create-admin, set-password, ...)
     db/base.py           DeclarativeBase with constraint naming conventions
     db/session.py        Database (engine + session factory), SessionDep
     models/__init__.py   import every model here so Alembic sees it
     models/auth.py       roles, permissions, employees, auth_sessions
     models/audit.py      audit_events (append-only)
+    models/catalogue.py  public catalogue: catalogue_categories, catalogue_products
     schemas/             Pydantic request/response models
     api/v1/router.py     includes every v1 route module
-    api/v1/routes/       one module per feature (health, auth, employees)
+    api/v1/routes/       one module per feature (health, auth, employees, catalogue, public)
   alembic/               migration environment and versions/
   scripts/e2e_server.py  API + throwaway database for the frontend's full-stack browser tests
   tests/                 pytest suite
@@ -258,7 +275,7 @@ endpoint"). The frontend's role checks are only for the interface.
 - **Unit tests** build the app with settings that point at a closed port, so they need no database and never read your `.env`.
 - **Integration tests** (`@pytest.mark.integration`) use `DATABASE_URL` and need the PostgreSQL container running. They create throwaway `ecopantry_test_*` databases on that server, migrate them, and drop them afterwards, so your development data is never touched. Auth tests share one migrated test database and empty its account tables between tests.
 
-What is covered: Argon2id hashing and verification, password rules, sign-in success and every failure (wrong password, unknown email, lockout, deactivated account, non-JSON body), cookie attributes, tokens stored only as hashes, `/auth/me`, sign-out, absolute and idle expiry, revoked/made-up/tampered cookies, CSRF on every unsafe auth route, password change, role checks on the staff endpoints (including Inspector read-only), deactivation ending sessions, the CLI, the audit log being append-only, migrations up and down, the role/permission seed matching the code, models matching the migrations, every non-public route refusing anonymous requests, and passwords/tokens never appearing in logs or audit records.
+What is covered: Argon2id hashing and verification, password rules, sign-in success and every failure (wrong password, unknown email, lockout, deactivated account, non-JSON body), cookie attributes, tokens stored only as hashes, `/auth/me`, sign-out, absolute and idle expiry, revoked/made-up/tampered cookies, CSRF on every unsafe auth route, password change, role checks on the staff endpoints (including Inspector read-only), deactivation ending sessions, the CLI, the audit log being append-only, migrations up and down, the catalogue (public endpoints showing published products and public fields only, drafts answering like missing products, administrator-only management, validation, slugs, publishing and audit events), the role/permission seed matching the code, models matching the migrations, every non-public route refusing anonymous requests, and passwords/tokens never appearing in logs or audit records.
 
 If PostgreSQL isn't running, skip the integration tests with `pytest -m "not integration"`.
 

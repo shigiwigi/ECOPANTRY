@@ -6,9 +6,12 @@ Protected routes depend on `app.auth.dependencies`; see
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import auth, employees, health
+from app.api.v1.routes import auth, batches, catalogue, employees, health, public
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(employees.router)
+api_router.include_router(catalogue.router)
+api_router.include_router(batches.router)
+api_router.include_router(public.router)

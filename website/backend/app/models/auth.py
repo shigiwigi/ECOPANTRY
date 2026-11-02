@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 from sqlalchemy import (
     CheckConstraint,
@@ -57,6 +58,7 @@ class Employee(Base):
     """A staff member who can sign in to the management portal. Never deleted; deactivate instead."""
 
     __tablename__ = "employees"
+    audit_target_type: ClassVar[str] = "employee"
     __table_args__ = (
         CheckConstraint("email = lower(btrim(email))", name="email_normalized"),
         CheckConstraint("length(btrim(full_name)) > 0", name="full_name_not_blank"),

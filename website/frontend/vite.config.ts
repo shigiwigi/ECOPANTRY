@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 
@@ -15,7 +16,10 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react(), tailwindcss()],
+    // DEV_HTTPS=true serves the dev server over HTTPS with a throwaway self-signed certificate.
+    // Browsers only allow the camera (QR scanner) on HTTPS or localhost, so this is how to
+    // try the scanner from a phone on the local network (`npm run dev -- --host`).
+    plugins: [react(), tailwindcss(), ...(env.DEV_HTTPS === 'true' ? [basicSsl()] : [])],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

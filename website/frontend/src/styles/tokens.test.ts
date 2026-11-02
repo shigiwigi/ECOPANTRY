@@ -60,6 +60,8 @@ const PAIRS: [string, string, number][] = [
   ["input", "card", 3],
   ["sidebar-ring", "sidebar", 3],
   ["sidebar-primary", "sidebar", 3],
+  // Printed labels and QR codes: well above AA, because scanners and cheap printers need it.
+  ["label-ink", "label-paper", 15],
 ]
 
 describe.each([":root", ".dark"] as const)("%s theme tokens", (selector) => {

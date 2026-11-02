@@ -1,5 +1,18 @@
 # Project status
 
+Milestone order, dependencies and acceptance criteria: [ROADMAP.md](ROADMAP.md).
+Milestone numbers here (M1, M2, ...) are the roadmap's; the README phase
+numbers differ (the roadmap maps them).
+
+Last verified 2026-11-02, after the QR and layout work: backend `pytest` 184
+passed, `alembic check` clean (no new migration; development database at
+`0003`); frontend lint (0 errors), `npm test` 200 passed, build OK with no
+preview code in `dist/`; `npm run test:e2e` 302 passed (1 skipped:
+Firefox-only); `npm run test:e2e:fullstack` 23 passed; `npm run
+test:e2e:browsers` Firefox and Android emulation 596 passed (10 skipped:
+Chromium-only fake-camera and desktop-only tests). Playwright WebKit doesn't
+start on this host.
+
 Current repository bootstrap:
 - [x] Initial directory structure
 - [x] README
@@ -12,6 +25,7 @@ Implementation status:
 - [x] Backend initialized (Milestone 2, see below)
 - [x] Local PostgreSQL with Podman (Milestone 2)
 - [x] Authentication schema implemented (migration `0002`: roles, permissions, employees, sessions, audit events)
+- [x] Public catalogue schema implemented (migration `0003`: catalogue categories and products, `catalogue.manage` permission)
 - [ ] Business schema implemented (inventory, batches, suppliers, monitoring, waste)
 - [ ] Inventory firmware implemented
 - [ ] Waste-bin firmware implemented
@@ -36,8 +50,8 @@ Implemented and tested with unit tests, Playwright smoke tests and screenshot re
 - [x] Browser UI/UX and accessibility review (2026-11-01): every route checked at 375, 1024 and 1440px in light and dark, for all three preview roles. Fixed: sign-in now reports an unreachable server instead of "Not found." when no backend is running; each page has its own browser tab title; focus moves to the new page after navigation; 404s stay inside the public or portal layout; the portal sidebar stays in view on short screens; tap targets are at least 24px; the no-access state has a page heading
 
 Structure only. These show an honest "not connected" state and no data:
-- [ ] All portal modules (inventory, batches, expiry, QR, suppliers, environment, pH, waste, camera, employees, alerts, reports, audit log, devices). Each lists what it is waiting on.
-- [ ] Public product catalogue (no catalogue API yet)
+- [ ] All portal modules (inventory, batches, expiry, suppliers, environment, pH, waste, camera, employees, alerts, reports, audit log, devices). Each lists what it is waiting on.
+- [x] Public product catalogue (done in Milestone 4, below)
 - [ ] Public bakery contact details and opening hours (`website/frontend/src/config/site.ts`, to be filled in by the owners)
 
 ## Milestone 2: backend foundation and PostgreSQL (done)
@@ -80,8 +94,52 @@ Not part of Milestone 3:
 - [ ] A separate, less-privileged database role for the API (needed to make the audit log tamper-resistant against the app itself)
 - [ ] Deployment cookie/CORS setup. Planned hosting puts the frontend and API on different origins; see `docs/OVERNIGHT_REPORT.md` for the options
 
+## Milestone 4: public website (in progress)
+
+Acceptance criteria and open decisions: [ROADMAP.md](ROADMAP.md#m4-public-website-in-progress).
+
+Implemented and tested (2026-11-02) with backend pytest (unit and PostgreSQL integration), frontend unit tests, the Playwright smoke suite (fixture catalogue, 375/1440px, light and dark) and the full-stack Playwright suite:
+- [x] Schema: `catalogue_categories` and `catalogue_products` (migration `0003`, additive, no seeded products). Separate from ingredient inventory; no link to stock, batches or suppliers. Constraints: slug format, non-blank names, price ≥ 0 with a 3-letter currency (both or neither), published state matching `published_at`
+- [x] Permission `catalogue.manage`, Administrator only (migration and `app/auth/permissions.py`)
+- [x] Public endpoints `GET /api/v1/public/catalogue` and `GET /api/v1/public/catalogue/products/{slug}`: published products only, explicit public fields only, drafts answer exactly like missing products, no session cookie read
+- [x] Staff endpoints under `/api/v1/catalogue` for products (list, create, partial update, publish/unpublish, delete) and categories (list with counts, create, rename, delete when empty); CSRF-protected; every change in the audit log (`audit_events` can now target any record type)
+- [x] Portal "Public catalogue" module (Administrator only): product list with Published/Draft status, add/edit sheet with validation, publish/unpublish, delete with confirmation, category management
+- [x] Products page: published products with search (ignores case and accents) and category filter, both kept in the URL; loading, empty, no-match and server-unreachable states with retry
+- [x] Product page by slug with price, summary and description; not-found and unreachable states
+- [x] Public pages never call auth endpoints and send catalogue requests without cookies (unit and e2e tests)
+
+Not done yet:
+- [ ] Product images (decision D6 in the roadmap)
+- [ ] Contact/enquiry form (decision D7)
+- [ ] Owner content: contact details, opening hours, About text, the real product list
+- [ ] Allergen and ingredient information on product pages (decision D11)
+
 Not yet implemented:
-- [ ] Contact/enquiry form (needs a backend endpoint)
 - [ ] Optional customer accounts (would use separate tables; never portal access)
+
+## Milestone 7: QR labels and scanning (started ahead of M6)
+
+Format, permissions, browser results and the M6 contract: [QR_LABELS.md](QR_LABELS.md).
+
+Implemented and tested (2026-11-02):
+- [x] Label format `ECOPANTRY:BATCH:<10-character code>`: opaque, random, nothing else in the QR; same rules in backend and frontend
+- [x] `GET /api/v1/batches/by-label/{code}` behind `batches.view` (every role): session and code checked, then `501 batch_lookup_unavailable` until batch records exist
+- [x] Portal QR scanner page (`/portal/scan`): camera on request only, rear camera preferred, camera picker after permission, every track stopped on stop, read, leaving, hidden tab or unplugging; explained errors (blocked, dismissed, no camera, busy, disconnected, HTTPS needed, unsupported); manual entry
+- [x] Portal QR labels page (`/portal/qr`, administrators and storekeepers): labels from typed values (clearly marked as not linked to batches), copies, preview, print-only sheet through the browser's print dialog
+- [x] Tests: backend pytest, unit tests (including encode → decode round trip), Playwright with a fake camera playing a real label (Chromium), Firefox fake camera, Android emulation, full-stack lookup with real roles and an ended session
+
+Not done yet:
+- [ ] Batch lookup returning real batches (needs M6 batch records and `label_code`)
+- [ ] Labels printed from batch records instead of typed values
+- [ ] Physical device and real Safari, Edge, Chrome-on-Android testing (checklist in QR_LABELS.md)
+- [ ] Expiry lists and FEFO
+
+## Portal navigation and layout (2026-11-02)
+
+- [x] Top bar: QR scanner shortcut instead of the theme button; theme moved into the account menu (and still in Settings)
+- [x] Environment listed second, under Overview; Alerts moved from the mobile bottom bar into the navigation list; bottom bar is Dashboard, Inventory, Environment, More
+- [x] Portal content uses the full width beside the sidebar; dashboard cards fill columns at a readable width
+- [x] Public footer: one compact band aligned with the header grid
+- [x] Playwright layout checks at 375–1920px and at 125/150/200% zoom
 
 Update this checklist as work is implemented and tested.
