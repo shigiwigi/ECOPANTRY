@@ -141,6 +141,7 @@ Guide, environment variables, costs and checks: [DEPLOYMENT.md](DEPLOYMENT.md).
 Prepared and checked locally (2026-11-02):
 - [x] `render.yaml` (Render free web service, Singapore, Python 3.14.3, migrations on start, health check) and `website/frontend/vercel.json` (Vite build, `/api/v1/*` forward, SPA routing, security headers allowing the camera for this site only)
 - [x] Production rehearsal: the committed backend files built in a fresh venv with `pip install .`, started with the Render start command and `ENVIRONMENT=production` against an empty throwaway database (migrations `0001`–`0003` applied, API docs 404, `no-store` on responses), served the production build through a same-origin proxy: `__Host-` Secure HttpOnly SameSite=Lax cookie, CSRF refusals (403), Storekeeper/Inspector permission refusals (403), admin CLI with `DATABASE_URL` overriding the local `.env`, the documented staff-account `curl` recipe, data kept and no migration re-run after a restart
+- [x] Rehearsal repeated after the QR work (2026-11-02): same results; production build has no preview code and no localhost URLs; QR lookup answers 501 through the proxy. `vercel.json` now also turns off Vercel's caching of forwarded API responses
 
 Not done yet:
 - [ ] Neon, Render and Vercel accounts and the first real deployment

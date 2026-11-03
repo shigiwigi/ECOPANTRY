@@ -44,6 +44,11 @@ the exact numbers.
 | Render | Free web service | $0 | Sleeps after 15 min without requests; the next request takes about a minute to wake it. 750 free hours a month. 512 MB RAM. No shell and no pre-deploy step on this plan. |
 | Neon | Free | $0, no card | 1 GB storage and 100 compute-hours a month per project. Compute suspends after 5 min idle and wakes in under a second. Running out of hours suspends the database until next month; it does not delete data. |
 
+Why not Render's own PostgreSQL: Render's free database expires 30 days after
+it is created and is deleted, with all its data, 14 days later. It has no
+backups. Neon's free plan is permanent, so the demo data survives until the
+project is over.
+
 **Before a demo:** open `https://<site>.vercel.app/api/v1/health/ready` two
 minutes early. That wakes Render and Neon, so the first real page loads fast.
 
@@ -52,7 +57,7 @@ minutes early. That wakes Render and Neon, so the first real page loads fast.
 | File | Purpose |
 |---|---|
 | `render.yaml` | Render Blueprint: one free web service, Python 3.14.3, `website/backend` as root, migrations on start, health check `/api/v1/health`. `DATABASE_URL` is `sync: false`, so it is typed into the dashboard and never stored in Git. |
-| `website/frontend/vercel.json` | Vite build settings, the `/api/v1/*` forward to Render, single-page-app routing, security headers (camera allowed for this site only, for the QR scanner). |
+| `website/frontend/vercel.json` | Vite build settings, the `/api/v1/*` forward to Render, single-page-app routing, security headers (camera allowed for this site only, for the QR scanner). Forwarded API responses are never cached by Vercel (`x-vercel-enable-rewrite-caching: 0`). The API already sends `Cache-Control: no-store`; this is a second guard so a session reply can never be served to another visitor. |
 
 The forward in `vercel.json` points at `your-render-service.invalid` until
 step 3. That address can never resolve, so a site deployed before step 3 fails
