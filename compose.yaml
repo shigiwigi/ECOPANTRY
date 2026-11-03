@@ -1,0 +1,37 @@
+# Local development services for EcoPantry.
+# Works with podman-compose (and docker compose). Credentials come from the
+# git-ignored .env file next to this one; copy .env.example to start.
+#
+#   podman-compose up -d      start PostgreSQL in the background
+#   podman-compose ps         show container status and health
+#   podman-compose stop       stop it; data stays in the named volume
+#
+# Never run `podman-compose down -v` or `podman volume rm` unless you mean to
+# delete the database.
+
+name: ecopantry
+
+services:
+  db:
+    image: docker.io/library/postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    ports:
+      # Loopback only: the database is never reachable from other machines.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/18/docker.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # TCP check, so it stays unhealthy while the init scripts run on the socket-only temporary server.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  pgdata:

@@ -1,0 +1,273 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * EcoPantry design tokens.
+ *
+ * Every colour below derives from the five brand colours in CLAUDE.md:
+ *   Deep Forest Green #0E3529, Forest Green #215F47, Sage Green #4B8A6C,
+ *   Warm Beige #E7DDC6, Muted Gold #B89B4A.
+ *
+ * Components must use these semantic tokens (bg-background, text-muted-foreground,
+ * bg-success/10 ...) and never raw hex values or Tailwind palette colours.
+ * src/styles/tokens.test.ts checks the contrast of the key pairs in both themes.
+ */
+
+:root {
+  --brand-deep-forest: #0e3529;
+  --brand-forest: #215f47;
+  --brand-sage: #4b8a6c;
+  --brand-beige: #e7ddc6;
+  --brand-gold: #b89b4a;
+
+  --background: #f6f2e9;
+  --foreground: #13241d;
+  --card: #fffdf8;
+  --card-foreground: #13241d;
+  --popover: #fffdf8;
+  --popover-foreground: #13241d;
+  --primary: #215f47;
+  --primary-foreground: #fbf8f1;
+  --secondary: #ece4d2;
+  --secondary-foreground: #0e3529;
+  --muted: #efe9dc;
+  --muted-foreground: #56645c;
+  --accent: #e7ddc6;
+  --accent-foreground: #0e3529;
+  --destructive: #a3392b;
+  --destructive-foreground: #fffdf8;
+  --border: #ddd3be;
+  --input: #8a7f68;
+  --ring: #2f7a5b;
+
+  --success: #276b4a;
+  --success-foreground: #fffdf8;
+  --warning: #85570a;
+  --warning-foreground: #fffdf8;
+  --info: #285a78;
+  --info-foreground: #fffdf8;
+  --gold: #b89b4a;
+  --gold-foreground: #231c07;
+
+  --chart-1: #215f47;
+  --chart-2: #b89b4a;
+  --chart-3: #4b8a6c;
+  --chart-4: #285a78;
+  --chart-5: #85570a;
+
+  --radius: 0.5rem;
+
+  /* Portal navigation is forest green in the light theme. */
+  --sidebar: #0e3529;
+  --sidebar-foreground: #ece5d4;
+  --sidebar-muted-foreground: #a8bbb0;
+  --sidebar-primary: #b89b4a;
+  --sidebar-primary-foreground: #0e3529;
+  --sidebar-accent: #1a4a3a;
+  --sidebar-accent-foreground: #fffdf8;
+  --sidebar-border: #1d4637;
+  --sidebar-ring: #d4bb72;
+
+  /*
+   * Printed labels and QR codes: pure black on white in both themes. Thermal and
+   * mono printers render any other colour as dithered grey, and inverted or tinted
+   * QR codes scan unreliably, so these deliberately don't follow the brand palette.
+   */
+  --label-ink: #000000;
+  --label-paper: #ffffff;
+}
+
+.dark {
+  --background: #0a211a;
+  --foreground: #efe8d8;
+  --card: #0f2b22;
+  --card-foreground: #efe8d8;
+  --popover: #133328;
+  --popover-foreground: #efe8d8;
+  --primary: #7cb898;
+  --primary-foreground: #0a211a;
+  --secondary: #173d31;
+  --secondary-foreground: #efe8d8;
+  --muted: #13362b;
+  --muted-foreground: #a5b5ab;
+  --accent: #1a4234;
+  --accent-foreground: #efe8d8;
+  --destructive: #e8806e;
+  --destructive-foreground: #0a211a;
+  --border: #224a3c;
+  --input: #5c8775;
+  --ring: #8fc6a9;
+
+  --success: #74c497;
+  --success-foreground: #0a211a;
+  --warning: #e3b65a;
+  --warning-foreground: #0a211a;
+  --info: #84bcdc;
+  --info-foreground: #0a211a;
+  --gold: #cdb267;
+  --gold-foreground: #1a1606;
+
+  --chart-1: #7cb898;
+  --chart-2: #cdb267;
+  --chart-3: #4b8a6c;
+  --chart-4: #84bcdc;
+  --chart-5: #e3b65a;
+
+  --sidebar: #071913;
+  --sidebar-foreground: #e4dccb;
+  --sidebar-muted-foreground: #9fb0a6;
+  --sidebar-primary: #cdb267;
+  --sidebar-primary-foreground: #0a211a;
+  --sidebar-accent: #12342a;
+  --sidebar-accent-foreground: #f6f0e2;
+  --sidebar-border: #163a2e;
+  --sidebar-ring: #cdb267;
+
+  /* Labels stay black on white in the dark theme too (see :root). */
+  --label-ink: #000000;
+  --label-paper: #ffffff;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-label-ink: var(--label-ink);
+  --color-label-paper: var(--label-paper);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Shared page container for the public site: header, sections and footer line up on
+ * the same edges. Content caps at 80rem (1280px); gutters grow with the viewport and
+ * never sit under a notch in landscape.
+ */
+@utility container-page {
+  width: 100%;
+  margin-inline: auto;
+  --gutter: 1rem;
+  max-width: calc(80rem + 2 * var(--gutter));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left)) max(var(--gutter), env(safe-area-inset-right));
+  @media (width >= 40rem) {
+    --gutter: 1.5rem;
+  }
+  @media (width >= 64rem) {
+    --gutter: 2rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground min-h-dvh;
+    font-feature-settings: "cv11", "ss01";
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/*
+ * Printed batch label sheets (src/features/qr/LabelSheet.tsx). The sheet is
+ * rendered straight into <body> and hidden on screen. While it exists, printing
+ * shows only the sheet: no portal navigation, header or page content, and a white
+ * page even in the dark theme. Pages without a sheet print as usual.
+ */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  html:has(body > .print-sheet),
+  body:has(> .print-sheet) {
+    background: var(--label-paper) !important;
+  }
+  body:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+  .print-sheet {
+    display: block;
+    page: labels;
+  }
+}
+
+/* 7 mm margins fit three 63.5 mm columns on both A4 and US Letter. */
+@page labels {
+  margin: 7mm;
+}
