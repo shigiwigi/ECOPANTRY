@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.v1.router import api_router
@@ -42,6 +43,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.database = database
+
+    # Handle cross-origin requests from Firebase and local dev
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://ecopantry-a7342.web.app",
+            "https://ecopantry-a7342.firebaseapp.com",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     register_exception_handlers(app)
     app.add_middleware(NoStoreMiddleware, prefix=API_V1_PREFIX)

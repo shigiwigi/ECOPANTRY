@@ -1,4 +1,4 @@
-"""The session cookie: HttpOnly, SameSite=Lax, Path=/, and Secure with a __Host- name outside development."""
+"""The session cookie: HttpOnly, SameSite=None, Path=/, and Secure for cross-origin deployments."""
 
 from fastapi import Response
 
@@ -11,15 +11,19 @@ def set_session_cookie(response: Response, settings: Settings, token: str) -> No
         token,
         max_age=int(settings.session_absolute_timeout.total_seconds()),
         path="/",
-        secure=settings.cookie_secure,
+        secure=True,
         httponly=True,
-        samesite="lax",
+        samesite="none",
     )
 
 
 def clear_session_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
-        settings.session_cookie_name, path="/", secure=settings.cookie_secure, httponly=True, samesite="lax"
+        settings.session_cookie_name,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="none",
     )
 
 
