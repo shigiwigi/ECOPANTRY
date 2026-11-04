@@ -2,7 +2,11 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useEffect, useState, type FormEvent } from "react"
 import { useForm } from "react-hook-form"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
-import { signInWithPopup } from "firebase/auth"
+import {
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+} from "firebase/auth"
 import { z } from "zod"
 
 import { Logo } from "@/components/common/Logo"
@@ -32,6 +36,7 @@ export default function SignInPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
+  const [isExchangingSession, setIsExchangingSession] = useState(false)
 
   useDocumentTitle(isSignUp ? "Create account" : "Staff sign-in", "portal")
 
@@ -49,7 +54,7 @@ export default function SignInPage() {
     },
   })
 
-  // Silent session check on initial mount
+  // Silent session check in the background (non-blocking)
   useEffect(() => {
     if (status === "unknown") {
       checkSession()
@@ -57,7 +62,51 @@ export default function SignInPage() {
   }, [status, checkSession])
 
   const destination = (location.state as { from?: string } | null)?.from ?? "/portal"
-  if (status !== "ready") return <RouteLoading />
+
+  // Process redirect result if redirected by mobile fallback
+  useEffect(() => {
+    if (!auth) return
+
+    let isMounted = true
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth)
+        if (result && isMounted) {
+          setIsExchangingSession(true)
+          const idToken = await result.user.getIdToken()
+          const sessionResponse = await apiRequest("/auth/google", {
+            method: "POST",
+            body: { id_token: idToken },
+          })
+          if (setSession) {
+            await setSession(sessionResponse)
+          }
+          navigate(destination, { replace: true })
+        }
+      } catch (error: any) {
+        if (!isMounted) return
+        console.error("Redirect auth error:", error)
+        if (error instanceof ApiError) {
+          setFormError(error.message)
+        } else {
+          setFormError(error?.message?.replace("Firebase: ", "") || "Google sign-in failed.")
+        }
+      } finally {
+        if (isMounted) {
+          setIsGoogleSubmitting(false)
+          setIsExchangingSession(false)
+        }
+      }
+    }
+
+    void handleRedirectResult()
+    return () => {
+      isMounted = false
+    }
+  }, [destination, navigate, setSession])
+
+  // Only block when exchanging an active login token; don't block on background status check
+  if (isExchangingSession) return <RouteLoading />
   if (user) return <Navigate to={destination} replace />
 
   const submit = handleSubmit(async (values) => {
@@ -110,34 +159,45 @@ export default function SignInPage() {
   const handleGoogleSignIn = async () => {
     setFormError(null)
     setIsGoogleSubmitting(true)
+
     try {
       if (!auth) {
         throw new Error("Firebase Auth is not properly initialized. Check your environment settings.")
       }
 
-      // 1. Force Google to show the account picker
       googleProvider.setCustomParameters({
         prompt: "select_account",
       })
 
-      // 2. Clear any lingering Firebase client session from a previous login
-      if (auth.currentUser) {
-        await auth.signOut()
+      let idToken: string | null = null
+
+      try {
+        const result = await signInWithPopup(auth, googleProvider)
+        idToken = await result.user.getIdToken()
+      } catch (popupErr: any) {
+        if (
+          popupErr?.code === "auth/popup-blocked" ||
+          popupErr?.code === "auth/cancelled-popup-request"
+        ) {
+          await signInWithRedirect(auth, googleProvider)
+          return
+        }
+        throw popupErr
       }
 
-      const result = await signInWithPopup(auth, googleProvider)
-      const idToken = await result.user.getIdToken(true)
+      if (idToken) {
+        setIsExchangingSession(true)
 
-      // 3. Exchange token with backend and update session state immediately
-      const sessionResponse = await apiRequest("/auth/google", {
-        method: "POST",
-        body: { id_token: idToken },
-      })
+        const sessionResponse = await apiRequest("/auth/google", {
+          method: "POST",
+          body: { id_token: idToken },
+        })
 
-      if (setSession) {
-        await setSession(sessionResponse)
+        if (setSession) {
+          await setSession(sessionResponse)
+        }
+        navigate(destination, { replace: true })
       }
-      navigate(destination, { replace: true })
     } catch (error: any) {
       console.error("Google sign-in caught error:", error)
 
@@ -154,6 +214,7 @@ export default function SignInPage() {
       }
     } finally {
       setIsGoogleSubmitting(false)
+      setIsExchangingSession(false)
     }
   }
 
@@ -196,7 +257,7 @@ export default function SignInPage() {
               type="button"
               variant="outline"
               onClick={handleGoogleSignIn}
-              disabled={isSubmitting || isGoogleSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting || isExchangingSession}
               className="flex h-10 w-full items-center justify-center gap-2 border-border font-medium shadow-sm transition hover:bg-muted/50"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -297,7 +358,7 @@ export default function SignInPage() {
               <Button
                 type="submit"
                 className="h-9 w-full aria-disabled:opacity-70"
-                aria-disabled={isSubmitting || isGoogleSubmitting || undefined}
+                aria-disabled={isSubmitting || isGoogleSubmitting || isExchangingSession || undefined}
               >
                 {isSubmitting
                   ? isSignUp
