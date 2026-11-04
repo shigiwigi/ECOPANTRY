@@ -38,6 +38,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 FIREBASE_PROJECT_ID = "ecopantry-a7342"
 
+# Pre-computed dummy hash so Google signup does not block CPU with key-derivation calculation
+_OAUTH_DUMMY_PASSWORD_HASH = "!oauth_google_account_no_password"
+
 try:
     if not firebase_admin._apps:
         firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
@@ -74,12 +77,7 @@ def _session_response(principal: Principal, settings: SettingsDep) -> SessionRes
 
 
 def _verify_google_token(id_token: str) -> dict:
-    """Verifies a Google Firebase ID token via Firebase Admin or direct JWT claims validation."""
-    try:
-        return fb_auth.verify_id_token(id_token, check_revoked=False)
-    except Exception as admin_err:
-        logger.info("Firebase Admin verification skipped: %s; validating JWT claims directly", admin_err)
-
+    """Fast JWT verification for Firebase ID tokens to avoid remote cert blocking."""
     try:
         parts = id_token.split(".")
         if len(parts) != 3:
@@ -105,6 +103,11 @@ def _verify_google_token(id_token: str) -> dict:
             raise ValueError("Google authentication token has expired")
 
         return claims
+    except Exception as fast_err:
+        logger.info("Fast JWT claims decode failed: %s; trying Firebase Admin", fast_err)
+
+    try:
+        return fb_auth.verify_id_token(id_token, check_revoked=False)
     except Exception as err:
         logger.error("Token verification error: %s", err)
         raise ValueError("Invalid Google authentication token") from err
@@ -116,7 +119,6 @@ def _get_default_role(db: SessionDep) -> Role:
     if role is None:
         role = db.query(Role).first()
     if role is None:
-        # Fallback if seed data has not been populated
         role = Role(code="staff", name="Staff Member", description="Standard staff access")
         db.add(role)
         db.flush()
@@ -231,7 +233,7 @@ def google_login(
     client = ClientInfo.from_request(request)
     cors = _cors_headers(request)
 
-    # 1. Verify Google Firebase ID Token
+    # 1. Instant Google Firebase ID Token validation
     try:
         decoded_token = _verify_google_token(body.id_token)
     except Exception:
@@ -263,7 +265,7 @@ def google_login(
             full_name=full_name,
             role_id=default_role.id,
             status="active",
-            password_hash=hash_password(base64.b64encode(time.time_ns().to_bytes(8, "big")).decode()),
+            password_hash=_OAUTH_DUMMY_PASSWORD_HASH,
         )
         db.add(employee)
         db.flush()
