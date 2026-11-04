@@ -23,8 +23,10 @@ export interface AuthContextValue {
   endReason: SessionEndReason | null
   /** True when the session is the development-only preview, not a real sign-in. */
   isPreview: boolean
-  /** Ask the server whether the browser has a session. Runs once; later calls do nothing. */
-  checkSession: () => void
+  /** Ask the server whether the browser has a session. */
+  checkSession: (force?: boolean) => void
+  /** Directly consumes a SessionResponse from the server and updates state immediately. */
+  setSession?: (response: unknown) => Promise<StaffUser>
   signIn: (values: SignInValues) => Promise<StaffUser>
   /** Ends the session on the server. Rejects with an ApiError if the server can't be reached. */
   signOut: () => Promise<void>
