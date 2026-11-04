@@ -1,12 +1,3 @@
-/**
- * Typed fetch wrapper for the EcoPantry FastAPI backend (`/api/v1`).
- *
- * The backend owns authentication and authorisation. The session lives in an
- * HttpOnly cookie the browser sends itself (`credentials: "include"`); this
- * code never sees it. The CSRF token the backend returns at sign-in is kept in
- * memory only (never localStorage) and sent as `X-CSRF-Token` on unsafe methods.
- */
-
 const DEFAULT_BASE_URL = "/api/v1"
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "")

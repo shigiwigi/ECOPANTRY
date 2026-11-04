@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ApiError, apiRequest, onUnauthorized, setCsrfToken } from "@/lib/api/client"
+import { auth } from "@/lib/firebase"
 import { AuthContext, type AuthContextValue, type SessionEndReason, type SessionStatus } from "./auth-context"
 import { PORTAL_PREVIEW_ENABLED, PREVIEW_USER } from "./preview"
 import type { Role, StaffUser } from "./roles"
@@ -35,8 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkStarted = useRef(PORTAL_PREVIEW_ENABLED)
   const isPreview = PORTAL_PREVIEW_ENABLED && state.user?.id === PREVIEW_USER.id
 
-  const checkSession = useCallback(() => {
-    if (checkStarted.current) return
+  const checkSession = useCallback((force = false) => {
+    if (checkStarted.current && !force) return
     checkStarted.current = true
     setState((current) => ({ ...current, status: "checking" }))
     void (async () => {
@@ -51,23 +52,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
   }, [])
 
-  // Any API call that comes back 401 means the server ended the session.
-  useEffect(() => {
-    if (PORTAL_PREVIEW_ENABLED) return
-    onUnauthorized(() => {
-      setCsrfToken(null)
-      setState((current) => (current.user ? { user: null, status: "ready", endReason: "session_ended" } : current))
-    })
-    return () => onUnauthorized(null)
-  }, [])
-
-  const signIn = useCallback(async (values: SignInValues) => {
-    const response = await apiRequest<unknown>("/auth/login", { method: "POST", body: values, ignoreUnauthorized: true })
+  const setSession = useCallback(async (response: unknown) => {
     const user = await acceptSession(response)
     checkStarted.current = true
     setState({ user, status: "ready", endReason: null })
     return user
   }, [])
+
+  // Any API call that comes back 401 means the server ended the session.
+  useEffect(() => {
+    if (PORTAL_PREVIEW_ENABLED) return
+    onUnauthorized(() => {
+      setCsrfToken(null)
+      // Clear client-side Firebase session if present
+      if (auth?.currentUser) {
+        auth.signOut().catch(() => {})
+      }
+      setState((current) => (current.user ? { user: null, status: "ready", endReason: "session_ended" } : current))
+    })
+    return () => onUnauthorized(null)
+  }, [])
+
+  const signIn = useCallback(
+    async (values: SignInValues) => {
+      const response = await apiRequest<unknown>("/auth/login", {
+        method: "POST",
+        body: values,
+        ignoreUnauthorized: true,
+      })
+      return await setSession(response)
+    },
+    [setSession],
+  )
 
   const signOut = useCallback(async () => {
     if (!isPreview) {
@@ -79,7 +95,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!(error instanceof ApiError && error.status === 401)) throw error
       }
     }
+
+    // Always clear Firebase client session upon sign-out
+    try {
+      if (auth?.currentUser) {
+        await auth.signOut()
+      }
+    } catch {
+      // Ignore client sign-out failures
+    }
+
     setCsrfToken(null)
+    checkStarted.current = false
     setState({ user: null, status: "ready", endReason: "signed_out" })
   }, [isPreview])
 
@@ -93,11 +120,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...state,
       isPreview,
       checkSession,
+      setSession,
       signIn,
       signOut,
       setPreviewRole: isPreview ? setPreviewRole : null,
     }),
-    [state, isPreview, checkSession, signIn, signOut, setPreviewRole],
+    [state, isPreview, checkSession, setSession, signIn, signOut, setPreviewRole],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

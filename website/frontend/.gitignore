@@ -30,3 +30,5 @@ e2e/.results-browsers/
 e2e/.screenshots/
 e2e/.fake-camera/
 playwright-report/
+
+.firebase/
