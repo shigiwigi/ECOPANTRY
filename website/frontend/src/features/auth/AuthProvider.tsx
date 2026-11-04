@@ -19,18 +19,12 @@ const INITIAL: AuthState = PORTAL_PREVIEW_ENABLED
 
 /** Validates a login or /auth/me response and keeps its CSRF token in memory. */
 async function acceptSession(response: unknown): Promise<StaffUser> {
-  // Loaded on demand so Zod stays out of the public site's initial bundle.
   const { sessionResponseSchema } = await import("./schemas")
   const session = sessionResponseSchema.parse(response)
   setCsrfToken(session.csrf_token)
   return session.user
 }
 
-/**
- * Holds the staff session in memory. The session itself is an HttpOnly cookie
- * set by the backend, so nothing here can read or leak it; the backend decides
- * what each request may do.
- */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(INITIAL)
   const checkStarted = useRef(PORTAL_PREVIEW_ENABLED)
@@ -45,8 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = await acceptSession(await apiRequest<unknown>("/auth/me", { ignoreUnauthorized: true }))
         setState({ user, status: "ready", endReason: null })
       } catch {
-        // 401 (no session), unreachable server or a malformed answer: all mean "not signed in".
-        // Sign-in then reports what is wrong when it's tried.
         setState(NO_SESSION)
       }
     })()
@@ -59,12 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user
   }, [])
 
-  // Any API call that comes back 401 means the server ended the session.
   useEffect(() => {
     if (PORTAL_PREVIEW_ENABLED) return
     onUnauthorized(() => {
       setCsrfToken(null)
-      // Clear client-side Firebase session if present
       if (auth?.currentUser) {
         auth.signOut().catch(() => {})
       }
@@ -90,13 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await apiRequest<void>("/auth/logout", { method: "POST", ignoreUnauthorized: true })
       } catch (error) {
-        // 401 means the session had already ended. Anything else means the server still
-        // has it, so stay signed in rather than pretend (this matters on shared computers).
         if (!(error instanceof ApiError && error.status === 401)) throw error
       }
     }
 
-    // Always clear Firebase client session upon sign-out
     try {
       if (auth?.currentUser) {
         await auth.signOut()
@@ -107,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setCsrfToken(null)
     checkStarted.current = false
-    setState({ user: null, status: "ready", endReason: "signed_out" })
+    setState({ user: null, status: "ready", endReason: null })
   }, [isPreview])
 
   const setPreviewRole = useCallback(

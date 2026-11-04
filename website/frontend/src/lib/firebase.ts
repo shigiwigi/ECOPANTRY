@@ -1,5 +1,11 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app"
-import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth"
+import {
+  getAuth,
+  GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth"
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
@@ -17,6 +23,12 @@ try {
   if (firebaseConfig.apiKey) {
     app = !getApps().length ? initializeApp(firebaseConfig) : getApp()
     authInstance = getAuth(app)
+
+    if (typeof window !== "undefined") {
+      void setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+        console.warn("Could not set browserLocalPersistence:", err)
+      })
+    }
   }
 } catch (error) {
   console.warn("Firebase client failed to initialize:", error)

@@ -1,4 +1,4 @@
-import { LogOut, ScanLine } from "lucide-react"
+import { Bell, LogOut } from "lucide-react"
 import { useRef, useState } from "react"
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import { DevPreviewBanner } from "@/components/common/DevPreviewBanner"
@@ -22,7 +22,6 @@ import {
   modulesForRole,
   PORTAL_MODULES,
   portalHref,
-  SCANNER_MODULE_ID,
   type PortalModule,
 } from "@/config/portal-modules"
 import { useAuth } from "@/features/auth/auth-context"
@@ -40,7 +39,6 @@ function currentModule(pathname: string): PortalModule | undefined {
   return PORTAL_MODULES.find(
     (module) =>
       path === portalHref(module) ||
-      // The dashboard is /portal itself; only modules with their own path own sub-paths.
       (module.path !== "" && path.startsWith(`${portalHref(module)}/`)),
   )
 }
@@ -59,38 +57,34 @@ export function PortalLayout() {
   const sidebarShown = useMediaQuery(SIDEBAR_QUERY)
   useFocusMainOnNavigate()
 
-  // The drawer is a small-screen control; close it if the window grows into the sidebar layout.
   const [prevWide, setPrevWide] = useState(sidebarShown)
   if (sidebarShown !== prevWide) {
     setPrevWide(sidebarShown)
     if (sidebarShown) setDrawerOpen(false)
   }
 
-  // RequireAuth guarantees a user; this keeps the type narrow without a non-null assertion.
   if (!user) return null
   const modules = modulesForRole(user.role)
   const activeModule = currentModule(pathname)
-  const scanner = modules.find((module) => module.id === SCANNER_MODULE_ID)
+  const alertsModule = modules.find((module) => module.id === "alerts")
 
   const handleSignOut = async () => {
     setSignOutFailed(false)
     try {
+      navigate("/", { replace: true })
       await signOut()
-      navigate("/portal/sign-in", { replace: true })
     } catch {
-      // The server still has the session, so don't pretend the user is signed out.
       setSignOutFailed(true)
     }
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-dvh w-full flex-col overflow-hidden">
       <SkipLink />
-      {/* Compile-time constant: the banner is removed from production builds. */}
       {PORTAL_PREVIEW_ENABLED && <DevPreviewBanner />}
-      <div className="flex min-h-0 flex-1">
-        {/* Sticky with its own scroll, so the navigation stays in reach on short laptop screens. */}
-        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Pinned Left Sidebar */}
+        <aside className="hidden h-dvh w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
           <div className="flex h-14 items-center border-b border-sidebar-border px-4">
             <Link to="/portal" className="rounded-md text-sidebar-foreground" aria-label="EcoPantry portal home">
               <Logo />
@@ -101,8 +95,10 @@ export function PortalLayout() {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background px-3 sm:px-5">
+        {/* Content Column with Pinned Header and Scrollable Body */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Pinned Top Bar */}
+          <header className="z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-3 sm:px-5">
             <Link
               to="/portal"
               className="rounded-md text-primary lg:hidden"
@@ -115,18 +111,19 @@ export function PortalLayout() {
               {activeModule?.label ?? "Portal"}
             </p>
 
-            {scanner && (
+            {alertsModule && (
               <Button
                 asChild
                 variant="outline"
                 className="h-11 gap-2 px-3 max-sm:w-11 max-sm:px-0 aria-[current=page]:border-primary aria-[current=page]:text-primary lg:h-9"
               >
-                <NavLink to={portalHref(scanner)} aria-label="Scan a QR label">
-                  <ScanLine className="size-[18px]" aria-hidden />
-                  <span className="max-sm:sr-only">Scan</span>
+                <NavLink to={portalHref(alertsModule)} aria-label="Open alerts">
+                  <Bell className="size-[18px]" aria-hidden />
+                  <span className="max-sm:sr-only">Alerts</span>
                 </NavLink>
               </Button>
             )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-11 max-w-48 min-w-11 gap-2 px-2 lg:h-9 lg:min-w-0" aria-label="Account menu">
@@ -162,19 +159,18 @@ export function PortalLayout() {
           </header>
 
           {signOutFailed && (
-            <p role="alert" className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6 lg:px-8">
+            <p role="alert" className="shrink-0 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6 lg:px-8">
               Couldn't reach the EcoPantry server to sign you out, so you're still signed in. Check the connection and try
               again.
             </p>
           )}
 
-          {/* Bottom padding clears the fixed bottom bar (h-16 plus the home-indicator inset) below lg. */}
+          {/* Independently Scrollable Main Section */}
           <main
             id={MAIN_CONTENT_ID}
             tabIndex={-1}
-            className="flex-1 px-4 pt-6 pb-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] outline-none sm:px-6 lg:px-8 lg:pb-6"
+            className="flex-1 overflow-y-auto px-4 pt-6 pb-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] outline-none sm:px-6 lg:px-8 lg:pb-6"
           >
-            {/* Full width of the content column: pages lay out their own grids instead of a narrow centred box. */}
             <div className="min-w-0">
               <Outlet />
             </div>
@@ -187,7 +183,6 @@ export function PortalLayout() {
           side="left"
           className="w-[min(18rem,85vw)] border-sidebar-border bg-sidebar p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-sidebar-foreground [&>button]:top-[calc(0.75rem+env(safe-area-inset-top))] [&>button]:size-10 [&>button]:text-sidebar-foreground"
           onCloseAutoFocus={(event) => {
-            // After choosing a module, focus the new page rather than the menu button.
             if (!navigatedFromDrawer.current) return
             navigatedFromDrawer.current = false
             event.preventDefault()

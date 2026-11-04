@@ -154,7 +154,6 @@ export const PORTAL_MODULES: PortalModule[] = [
     summary: "Scan a batch label with this device's camera, or type its code, to look the batch up. Scanning never changes stock.",
     icon: ScanLine,
     group: "Stock",
-    // Matches the backend's `batches.view`, which every role holds.
     roles: ALL,
   },
   {
@@ -165,7 +164,6 @@ export const PORTAL_MODULES: PortalModule[] = [
     summary: "Make and print QR labels for ingredient batches. A label carries only the batch code.",
     icon: QrCode,
     group: "Stock",
-    // Matches the backend's `qr_labels.manage` (administrators and storekeepers).
     roles: MANAGE,
   },
   {
@@ -283,7 +281,6 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Finished products shown on the customer website. Separate from ingredient inventory; only published products are public.",
     icon: Store,
     group: "System",
-    // Matches the backend's `catalogue.manage` permission (administrators only).
     roles: ["admin"],
   },
   {
@@ -299,14 +296,12 @@ export const PORTAL_MODULES: PortalModule[] = [
 ]
 
 /**
- * High-frequency modules pinned to the mobile/tablet bottom bar, in order. Every
- * other module (Alerts included) stays one tap away under "More", which opens the
- * full navigation. Three tabs plus More leaves room for full labels on a 320px
- * phone. The QR scanner isn't a tab: it has its own button in the top bar.
+ * High-frequency modules pinned to the mobile/tablet bottom bar:
+ * Dashboard, Inventory, Scan, and Environment, followed by "More" (5 buttons total).
  */
-export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "inventory", "environment"]
+export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "inventory", "scanner", "environment"]
 
-/** The module behind the top bar's scan shortcut. */
+/** The module behind the scanner shortcut. */
 export const SCANNER_MODULE_ID = "scanner"
 
 export function portalHref(module: PortalModule): string {
