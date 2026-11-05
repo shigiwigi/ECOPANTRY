@@ -69,7 +69,7 @@ export function PublicLayout() {
           <div className="flex items-center gap-2 justify-self-end">
             <ThemeMenu className="hidden md:inline-flex" />
             <Button asChild variant="outline" className="hidden md:inline-flex lg:h-9 lg:px-4 lg:text-sm">
-              <Link to="/portal">Staff sign-in</Link>
+              <Link to="/portal/sign-in">Staff sign-in</Link>
             </Button>
 
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -83,14 +83,12 @@ export function PublicLayout() {
                 showCloseButton={false}
                 className="w-[min(22rem,88vw)] gap-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
                 onOpenAutoFocus={(event) => {
-                  // Start on the current page's link so arrowing/tabbing begins where the reader is.
                   const current = menuNavRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
                   if (!current) return
                   event.preventDefault()
                   current.focus()
                 }}
                 onCloseAutoFocus={(event) => {
-                  // After choosing a page, focus the new page rather than the menu button.
                   if (!navigatedFromMenu.current) return
                   navigatedFromMenu.current = false
                   event.preventDefault()
@@ -137,7 +135,7 @@ export function PublicLayout() {
                   <div className="mt-4 border-t px-1 pt-4">
                     <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">For bakery staff</p>
                     <Button asChild variant="outline" className="mt-2 h-12 w-full text-base">
-                      <Link to="/portal" onClick={closeMenuAfterNavigate}>
+                      <Link to="/portal/sign-in" onClick={closeMenuAfterNavigate}>
                         Staff sign-in
                       </Link>
                     </Button>
@@ -157,7 +155,6 @@ export function PublicLayout() {
         <Outlet />
       </main>
 
-      {/* Same three-column grid as the header: brand left, links centred under the main navigation, staff link right. */}
       <footer className="border-t bg-secondary/50 pb-[env(safe-area-inset-bottom)]">
         <div className="container-page grid gap-x-8 gap-y-4 py-6 text-sm md:grid-cols-[1fr_auto_1fr] md:items-center lg:py-8">
           <div className="min-w-0">
@@ -177,7 +174,7 @@ export function PublicLayout() {
           </nav>
           <div className="md:justify-self-end">
             <Link
-              to="/portal"
+              to="/portal/sign-in"
               className="-mx-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 font-medium text-primary underline-offset-4 hover:underline md:min-h-9"
             >
               Staff portal

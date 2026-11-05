@@ -17,16 +17,24 @@ export default defineConfig(({ mode }) => {
 
   return {
     // DEV_HTTPS=true serves the dev server over HTTPS with a throwaway self-signed certificate.
-    // Browsers only allow the camera (QR scanner) on HTTPS or localhost, so this is how to
-    // try the scanner from a phone on the local network (`npm run dev -- --host`).
     plugins: [react(), tailwindcss(), ...(env.DEV_HTTPS === 'true' ? [basicSsl()] : [])],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
-    server: { proxy: apiProxy },
-    preview: { proxy: apiProxy },
+    server: {
+      proxy: apiProxy,
+      headers: {
+        'Cross-Origin-Opener-Policy': 'unsafe-none',
+      },
+    },
+    preview: {
+      proxy: apiProxy,
+      headers: {
+        'Cross-Origin-Opener-Policy': 'unsafe-none',
+      },
+    },
     test: {
       environment: 'jsdom',
       globals: false,

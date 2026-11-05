@@ -79,8 +79,7 @@ class Settings(BaseSettings):
 
     @property
     def session_cookie_name(self) -> str:
-        # The __Host- prefix makes browsers reject the cookie unless it is Secure, host-only and Path=/.
-        return "__Host-ecopantry_session" if self.cookie_secure else "ecopantry_session"
+        return "ecopantry_session"
 
     @property
     def session_idle_timeout(self) -> timedelta:
