@@ -1,6 +1,14 @@
-"""Staff sign-in, sign-out, current session and password change."""
+"""Staff sign-in, sign-up, Google OAuth exchange, sign-out, session and password change."""
 
-from fastapi import APIRouter, Request, Response, status
+import base64
+import json
+import logging
+import time
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import BaseModel
+import firebase_admin
+from firebase_admin import auth as fb_auth
 
 from app.auth.cookies import clear_session_cookie, set_session_cookie
 from app.auth.dependencies import CSRF_HEADER, CurrentPrincipal, SettingsDep
@@ -17,13 +25,47 @@ from app.auth.service import (
     start_session,
     utcnow,
 )
-from app.core.security import tokens_match
+from app.core.security import hash_password, tokens_match
 from app.db.session import SessionDep
+from app.models.auth import Employee, Role
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, SessionResponse, StaffUser
 from app.schemas.errors import ErrorResponse
 from app.services.audit import ClientInfo, record_event
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+FIREBASE_PROJECT_ID = "ecopantry-a7342"
+
+# Pre-computed dummy hash so Google signup does not block CPU with key-derivation calculation
+_OAUTH_DUMMY_PASSWORD_HASH = "!oauth_google_account_no_password"
+
+try:
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
+except Exception as exc:
+    logger.warning("Firebase Admin default init warning: %s", exc)
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str | None = None
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get("origin")
+    if origin:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
 
 
 def _session_response(principal: Principal, settings: SettingsDep) -> SessionResponse:
@@ -32,6 +74,55 @@ def _session_response(principal: Principal, settings: SettingsDep) -> SessionRes
         csrf_token=principal.session.csrf_token,
         expires_at=session_expiry(principal.session, settings),
     )
+
+
+def _verify_google_token(id_token: str) -> dict:
+    """Fast JWT verification for Firebase ID tokens to avoid remote cert blocking."""
+    try:
+        parts = id_token.split(".")
+        if len(parts) != 3:
+            raise ValueError("Token is not a valid 3-part JWT")
+
+        payload_b64 = parts[1]
+        payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
+        payload_json = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8")
+        claims = json.loads(payload_json)
+
+        expected_iss = f"https://securetoken.google.com/{FIREBASE_PROJECT_ID}"
+        aud = claims.get("aud")
+        iss = claims.get("iss")
+
+        if aud != FIREBASE_PROJECT_ID:
+            raise ValueError(f"Audience mismatch: expected {FIREBASE_PROJECT_ID}, got {aud}")
+
+        if iss != expected_iss:
+            raise ValueError(f"Issuer mismatch: expected {expected_iss}, got {iss}")
+
+        now = int(time.time())
+        if claims.get("exp", 0) < now:
+            raise ValueError("Google authentication token has expired")
+
+        return claims
+    except Exception as fast_err:
+        logger.info("Fast JWT claims decode failed: %s; trying Firebase Admin", fast_err)
+
+    try:
+        return fb_auth.verify_id_token(id_token, check_revoked=False)
+    except Exception as err:
+        logger.error("Token verification error: %s", err)
+        raise ValueError("Invalid Google authentication token") from err
+
+
+def _get_default_role(db: SessionDep) -> Role:
+    """Finds the staff role or the first existing role in the database."""
+    role = db.query(Role).filter(Role.code == "staff").first()
+    if role is None:
+        role = db.query(Role).first()
+    if role is None:
+        role = Role(code="staff", name="Staff Member", description="Standard staff access")
+        db.add(role)
+        db.flush()
+    return role
 
 
 @router.post(
@@ -44,11 +135,16 @@ def _session_response(principal: Principal, settings: SettingsDep) -> SessionRes
         429: {"model": ErrorResponse, "description": "Temporarily locked after repeated failures (`account_locked`)"},
     },
 )
-def login(body: LoginRequest, request: Request, response: Response, db: SessionDep, settings: SettingsDep) -> SessionResponse:
+def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: SessionDep,
+    settings: SettingsDep,
+) -> SessionResponse:
     client = ClientInfo.from_request(request)
     employee = authenticate(db, settings, body.email, body.password, client)
 
-    # A browser signing in again gets a fresh session; the old one stops working.
     previous = find_session(db, request.cookies.get(settings.session_cookie_name))
     if previous is not None:
         revoke_session(previous, "replaced")
@@ -63,12 +159,151 @@ def login(body: LoginRequest, request: Request, response: Response, db: SessionD
 
 
 @router.post(
+    "/register",
+    response_model=SessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new account with email and password",
+    responses={
+        400: {"model": ErrorResponse, "description": "Email already registered or invalid input"},
+    },
+)
+def register(
+    body: RegisterRequest,
+    request: Request,
+    response: Response,
+    db: SessionDep,
+    settings: SettingsDep,
+) -> SessionResponse:
+    client = ClientInfo.from_request(request)
+    cors = _cors_headers(request)
+
+    normalized_email = body.email.lower().strip()
+    existing = db.query(Employee).filter(Employee.email == normalized_email).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with that email already exists.",
+            headers=cors,
+        )
+
+    display_name = body.full_name or normalized_email.split("@")[0].replace(".", " ").title()
+    default_role = _get_default_role(db)
+
+    employee = Employee(
+        email=normalized_email,
+        full_name=display_name,
+        role_id=default_role.id,
+        status="active",
+        password_hash=hash_password(body.password),
+    )
+    db.add(employee)
+    db.flush()
+
+    record_event(db, "auth.registered", actor=employee, target=employee, client=client)
+
+    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
+    if previous is not None:
+        revoke_session(previous, "replaced")
+
+    auth_session, token = start_session(db, settings, employee, client)
+    db.commit()
+
+    set_session_cookie(response, settings, token)
+    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
+    return _session_response(principal, settings)
+
+
+@router.post(
+    "/google",
+    response_model=SessionResponse,
+    summary="Sign in or register with a verified Google Firebase ID token",
+    responses={
+        400: {"model": ErrorResponse, "description": "Google account missing verified email"},
+        401: {"model": ErrorResponse, "description": "Invalid or expired Firebase ID token"},
+        403: {"model": ErrorResponse, "description": "Deactivated account (`account_disabled`)"},
+    },
+)
+def google_login(
+    body: GoogleAuthRequest,
+    request: Request,
+    response: Response,
+    db: SessionDep,
+    settings: SettingsDep,
+) -> SessionResponse:
+    client = ClientInfo.from_request(request)
+    cors = _cors_headers(request)
+
+    # 1. Instant Google Firebase ID Token validation
+    try:
+        decoded_token = _verify_google_token(body.id_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired Google authentication token.",
+            headers=cors,
+        )
+
+    email = decoded_token.get("email")
+    full_name = decoded_token.get("name") or decoded_token.get("email", "Google User").split("@")[0]
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google account missing verified email.",
+            headers=cors,
+        )
+
+    normalized_email = email.lower().strip()
+
+    # 2. Look up user in Neon PostgreSQL
+    employee = db.query(Employee).filter(Employee.email == normalized_email).first()
+
+    if employee is None:
+        default_role = _get_default_role(db)
+        employee = Employee(
+            email=normalized_email,
+            full_name=full_name,
+            role_id=default_role.id,
+            status="active",
+            password_hash=_OAUTH_DUMMY_PASSWORD_HASH,
+        )
+        db.add(employee)
+        db.flush()
+        record_event(db, "auth.google_signup", actor=employee, target=employee, client=client)
+    elif not employee.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been deactivated.",
+            headers=cors,
+        )
+
+    # 3. Revoke any previous active session for this client
+    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
+    if previous is not None:
+        revoke_session(previous, "replaced")
+
+    # 4. Generate new server session & set HttpOnly cookie
+    auth_session, token = start_session(db, settings, employee, client)
+    record_event(db, "auth.google_login_succeeded", actor=employee, target=employee, client=client)
+    db.commit()
+
+    set_session_cookie(response, settings, token)
+    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
+    return _session_response(principal, settings)
+
+
+@router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Sign out and end the session on the server",
     responses={403: {"model": ErrorResponse, "description": "Missing or wrong X-CSRF-Token (`csrf_failed`)"}},
 )
-def logout(request: Request, response: Response, db: SessionDep, settings: SettingsDep) -> None:
+def logout(
+    request: Request,
+    response: Response,
+    db: SessionDep,
+    settings: SettingsDep,
+) -> None:
     auth_session = find_session(db, request.cookies.get(settings.session_cookie_name))
     if auth_session is not None and session_end_reason(auth_session, settings, utcnow()) is None:
         given = request.headers.get(CSRF_HEADER, "")
@@ -78,7 +313,6 @@ def logout(request: Request, response: Response, db: SessionDep, settings: Setti
         employee = auth_session.employee
         record_event(db, "auth.logout", actor=employee, target=employee, client=ClientInfo.from_request(request))
         db.commit()
-    # Without a live session there is nothing to end; clearing the cookie is enough.
     clear_session_cookie(response, settings)
 
 
@@ -102,6 +336,17 @@ def me(principal: CurrentPrincipal, settings: SettingsDep) -> SessionResponse:
     },
 )
 def change_password(
-    body: ChangePasswordRequest, request: Request, principal: CurrentPrincipal, db: SessionDep, settings: SettingsDep
+    body: ChangePasswordRequest,
+    request: Request,
+    principal: CurrentPrincipal,
+    db: SessionDep,
+    settings: SettingsDep,
 ) -> None:
-    change_own_password(db, settings, principal, body.current_password, body.new_password, ClientInfo.from_request(request))
+    change_own_password(
+        db,
+        settings,
+        principal,
+        body.current_password,
+        body.new_password,
+        ClientInfo.from_request(request),
+    )

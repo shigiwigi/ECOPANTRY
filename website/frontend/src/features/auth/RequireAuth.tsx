@@ -17,10 +17,11 @@ export function RequireAuth() {
   }, [status, checkSession])
 
   if (status !== "ready") return <RouteLoading />
+
   if (!user) {
-    // After a deliberate sign-out the next person starts at the dashboard, not on the last page.
-    const state = endReason === "signed_out" ? undefined : { from: location.pathname }
+    const state = endReason === "session_ended" ? { from: location.pathname } : undefined
     return <Navigate to="/portal/sign-in" replace state={state} />
   }
+
   return <Outlet />
 }

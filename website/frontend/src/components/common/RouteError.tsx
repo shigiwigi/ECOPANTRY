@@ -9,6 +9,10 @@ import { useDocumentTitle } from "@/lib/document-title"
 export function RouteError() {
   const error = useRouteError()
   const { pathname } = useLocation()
+
+  // Log caught error for debugging inside the component body where hooks are valid
+  console.error("REACT ROUTER CAUGHT ERROR:", error)
+
   const notFound = isRouteErrorResponse(error) && error.status === 404
   const inPortal = pathname === "/portal" || pathname.startsWith("/portal/")
   useDocumentTitle(notFound ? "Page not found" : "Something went wrong", inPortal ? "portal" : "public")
