@@ -17,5 +17,5 @@ export const PREVIEW_USER: StaffUser = {
   email: "preview@localhost",
   role: "admin",
   // No permissions: the preview has no session, so it can't do anything on the backend.
-  permissions: [],
+  
 }

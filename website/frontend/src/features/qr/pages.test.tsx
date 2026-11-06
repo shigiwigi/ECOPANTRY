@@ -32,7 +32,7 @@ function stubApi(handler: (url: string) => Response) {
   )
 }
 
-const staff = (role: Role): StaffUser => ({ id: "u1", name: "Test User", email: "test@example.test", role, permissions: [] })
+const staff = (role: Role): StaffUser => ({ id: "u1", name: "Test User", email: "test@example.test", role })
 
 function renderAt(path: string, user: StaffUser | null, { isPreview = false } = {}) {
   const auth: AuthContextValue = {
@@ -73,7 +73,7 @@ async function enterCode(code: string) {
 describe("QR scanner page", () => {
   it("looks up a typed code and says honestly that batch details aren't connected yet", async () => {
     stubApi(() => json({ detail: "…", code: "batch_lookup_unavailable" }, 501))
-    renderAt("/portal/scan", staff("inspector"))
+    renderAt("/portal/scan", staff("food_inspector"))
     await enterCode("k7m2q-9x4tr")
 
     expect(await screen.findByText("Batch details aren't connected yet")).toBeInTheDocument()
@@ -83,7 +83,7 @@ describe("QR scanner page", () => {
 
   it("rejects a malformed code without asking the server", async () => {
     stubApi(() => json({}, 500))
-    renderAt("/portal/scan", staff("storekeeper"))
+    renderAt("/portal/scan", staff("shopkeeper"))
     await enterCode("hello")
 
     expect(await screen.findByRole("alert")).toHaveTextContent("doesn't look like a batch code")
@@ -103,7 +103,7 @@ describe("QR scanner page", () => {
         storage_location: "Dry store",
       }),
     )
-    renderAt("/portal/scan", staff("storekeeper"))
+    renderAt("/portal/scan", staff("shopkeeper"))
     await enterCode("K7M2Q9X4TR")
 
     expect(await screen.findByText("Strong white flour")).toBeInTheDocument()
@@ -116,14 +116,14 @@ describe("QR scanner page", () => {
     [404, { detail: "Not found.", code: "not_found" }, "No batch has this label"],
   ])("explains a %i answer", async (status, body, message) => {
     stubApi(() => json(body, status))
-    renderAt("/portal/scan", staff("storekeeper"))
+    renderAt("/portal/scan", staff("shopkeeper"))
     await enterCode("K7M2Q9X4TR")
     expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
   it("offers to retry when the server can't be reached", async () => {
     stubApi(() => new Response("Bad gateway", { status: 502 }))
-    renderAt("/portal/scan", staff("storekeeper"))
+    renderAt("/portal/scan", staff("shopkeeper"))
     await enterCode("K7M2Q9X4TR")
     expect(await screen.findByText("Can't reach the EcoPantry server")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument()
@@ -138,7 +138,7 @@ describe("QR scanner page", () => {
   })
 
   it("is open to every role, like the backend's batches.view", async () => {
-    for (const role of ["admin", "storekeeper", "inspector"] as const) {
+    for (const role of ["admin", "shopkeeper", "food_inspector"] as const) {
       stubApi(() => json({}, 500))
       renderAt("/portal/scan", staff(role))
       expect(await screen.findByRole("heading", { name: "QR scanner", level: 1 })).toBeInTheDocument()
@@ -148,7 +148,7 @@ describe("QR scanner page", () => {
 
   it("returns to sign-in when the session has ended", async () => {
     const session = {
-      user: { id: "u1", name: "Sam", email: "sam@example.test", role: "storekeeper", role_name: "Storekeeper", permissions: ["batches.view"] },
+      user: { id: "u1", name: "Sam", email: "sam@example.test", role: "shopkeeper", role_name: "Shopkeeper", permissions: ["batches.view"] },
       csrf_token: "token",
       expires_at: "2026-11-02T12:00:00Z",
     }
@@ -174,13 +174,13 @@ describe("QR scanner page", () => {
 
 describe("QR labels page", () => {
   it("keeps inspectors out, even by direct URL", async () => {
-    renderAt("/portal/qr", staff("inspector"))
+    renderAt("/portal/qr", staff("food_inspector"))
     expect(await screen.findByRole("heading", { name: "You don't have access to this page", level: 1 })).toBeInTheDocument()
   })
 
   it("adds labels to a print-only sheet and prints through the browser", async () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
-    renderAt("/portal/qr", staff("storekeeper"))
+    renderAt("/portal/qr", staff("shopkeeper"))
     const user = userEvent.setup()
 
     expect(await screen.findByRole("button", { name: "Print labels" })).toBeDisabled()
@@ -225,7 +225,7 @@ describe("QR labels page", () => {
 
 describe("portal navigation", () => {
   it("puts a scan shortcut in the top bar and the theme in the account menu", async () => {
-    renderAt("/portal", staff("inspector"))
+    renderAt("/portal", staff("food_inspector"))
     const shortcut = await screen.findByRole("link", { name: "Scan a QR label" })
     expect(shortcut).toHaveAttribute("href", "/portal/scan")
     expect(screen.queryByRole("button", { name: "Change theme" })).not.toBeInTheDocument()
@@ -237,7 +237,7 @@ describe("portal navigation", () => {
   })
 
   it("lists Environment and Alerts in the navigation, and only shows labels to roles that make them", async () => {
-    renderAt("/portal", staff("inspector"))
+    renderAt("/portal", staff("food_inspector"))
     const nav = await screen.findByRole("navigation", { name: "Portal" })
     const links = within(nav).getAllByRole("link").map((link) => link.textContent)
     expect(links.slice(0, 3)).toEqual(["Dashboard", "Environment", "Alerts"])
