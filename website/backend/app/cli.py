@@ -5,6 +5,13 @@
     .venv/bin/python -m app.cli deactivate --email someone@example.com
     .venv/bin/python -m app.cli reactivate --email someone@example.com
     .venv/bin/python -m app.cli purge-sessions --days 30
+    .venv/bin/python -m app.cli create-device --name "Inventory station 1"
+    .venv/bin/python -m app.cli rotate-device-token --name "Inventory station 1"
+    .venv/bin/python -m app.cli list-devices
+
+Device tokens are printed once, when a device is created or its token is
+rotated; only their SHA-256 is stored. Copy the token into the station's
+include/secrets.h (git-ignored).
 
 Passwords are prompted for (typed twice, not echoed), or read from standard
 input with --password-stdin. They are never accepted as arguments, because
@@ -28,6 +35,8 @@ from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.db.session import Database
 from app.models.auth import AuthSession, Employee, Role
+from app.models.devices import Device
+from app.services import devices as device_service
 from app.services import employees as service
 
 
@@ -107,6 +116,35 @@ def _purge_sessions(db: Session, args: argparse.Namespace, _: TextIO, out: TextI
     out.write(f"Deleted {getattr(result, 'rowcount', 0)} sessions that ended more than {args.days} days ago.\n")
 
 
+def _device(db: Session, name: str) -> Device:
+    device = device_service.find_by_name(db, name)
+    if device is None:
+        raise CliError("No device has that name.")
+    return device
+
+
+def _create_device(db: Session, args: argparse.Namespace, _: TextIO, out: TextIO) -> None:
+    device, token = device_service.create_device(db, args.name, by=None, actor_type="cli")
+    db.commit()
+    out.write(f"Registered {device.name}.\nDevice token (shown once, put it in include/secrets.h):\n{token}\n")
+
+
+def _rotate_device_token(db: Session, args: argparse.Namespace, _: TextIO, out: TextIO) -> None:
+    device = _device(db, args.name)
+    token = device_service.rotate_token(db, device, by=None, actor_type="cli")
+    db.commit()
+    out.write(f"New token for {device.name}; the old one no longer works.\n{token}\n")
+
+
+def _list_devices(db: Session, _: argparse.Namespace, __: TextIO, out: TextIO) -> None:
+    devices = device_service.list_devices(db)
+    if not devices:
+        out.write("No devices registered.\n")
+    for device in devices:
+        seen = device.last_seen_at.isoformat(timespec="seconds") if device.last_seen_at else "never"
+        out.write(f"{device.name}\t{device.status}\t{device.token_prefix}…\tlast seen {seen}\n")
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="EcoPantry staff account tools.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -133,6 +171,17 @@ def _parser() -> argparse.ArgumentParser:
     purge = commands.add_parser("purge-sessions", help="Delete sessions that ended long ago.")
     purge.add_argument("--days", type=int, default=30, help="Keep sessions that ended within this many days.")
     purge.set_defaults(handler=_purge_sessions)
+
+    create_device = commands.add_parser("create-device", help="Register a sensor station and print its token once.")
+    create_device.add_argument("--name", required=True, help="Unique name shown in the portal.")
+    create_device.set_defaults(handler=_create_device)
+
+    rotate = commands.add_parser("rotate-device-token", help="Give a station a new token; the old one stops working.")
+    rotate.add_argument("--name", required=True)
+    rotate.set_defaults(handler=_rotate_device_token)
+
+    list_devices = commands.add_parser("list-devices", help="List registered stations.")
+    list_devices.set_defaults(handler=_list_devices)
     return parser
 
 

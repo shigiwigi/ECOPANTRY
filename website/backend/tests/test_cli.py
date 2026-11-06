@@ -111,3 +111,27 @@ def test_purge_sessions_deletes_only_long_ended_sessions(auth_settings: Settings
     assert "Deleted 1 " in out
     db.expire_all()
     assert len(db.scalars(select(AuthSession)).all()) == 1
+
+
+def test_create_device_prints_a_working_token_once(auth_settings: Settings, api: TestClient, db: Session) -> None:
+    code, out, err = run(auth_settings, "create-device", "--name", "Inventory station 1")
+
+    assert (code, err) == (0, "")
+    token = out.strip().splitlines()[-1]
+    assert token.startswith("epd_")
+    assert api.post("/api/v1/device/session", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    _, listed, _ = run(auth_settings, "list-devices")
+    assert "Inventory station 1" in listed and token not in listed
+
+
+def test_rotate_device_token_replaces_the_old_token(auth_settings: Settings, api: TestClient) -> None:
+    _, out, _ = run(auth_settings, "create-device", "--name", "Station")
+    old = out.strip().splitlines()[-1]
+
+    code, out, _ = run(auth_settings, "rotate-device-token", "--name", "Station")
+
+    new = out.strip().splitlines()[-1]
+    assert code == 0 and new != old
+    assert api.post("/api/v1/device/session", headers={"Authorization": f"Bearer {old}"}).status_code == 401
+    assert api.post("/api/v1/device/session", headers={"Authorization": f"Bearer {new}"}).status_code == 200
+    assert run(auth_settings, "rotate-device-token", "--name", "Nope")[0] == 1

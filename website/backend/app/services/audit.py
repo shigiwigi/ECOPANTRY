@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.audit import AuditEvent
 from app.models.auth import Employee
 
-ActorType = Literal["employee", "anonymous", "cli"]
+ActorType = Literal["employee", "anonymous", "cli", "device"]
 
 
 class AuditTarget(Protocol):

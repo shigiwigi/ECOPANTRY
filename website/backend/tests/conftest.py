@@ -114,7 +114,8 @@ def auth_app(auth_settings: Settings) -> Iterator[FastAPI]:
     with application.state.database.engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE audit_events, auth_sessions, catalogue_products, catalogue_categories, employees "
+                "TRUNCATE audit_events, auth_sessions, catalogue_products, catalogue_categories, "
+                "sensor_readings, rfid_scans, rfid_cards, device_live_usage, devices, employees "
                 "RESTART IDENTITY"
             )
         )

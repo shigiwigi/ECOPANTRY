@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-ACTOR_TYPES = ("employee", "anonymous", "cli")
+ACTOR_TYPES = ("employee", "anonymous", "cli", "device")
 
 
 class AuditEvent(Base):
