@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/features/auth/auth-context"
 import { ROLE_LABELS } from "@/features/auth/roles"
+import { StationSummary } from "@/features/sensors/StationSummary"
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
@@ -45,10 +46,13 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Real readings from the inventory station, for every role */}
+      <StationSummary />
+
       {/* ADMIN VIEW */}
       {role === "admin" && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between text-muted-foreground">
                 <span className="text-sm font-medium">Access Management</span>
@@ -67,32 +71,16 @@ export default function DashboardPage() {
 
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-sm font-medium">Inventory Health</span>
-                <Package className="size-5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm font-medium">Inventory</span>
+                <Package className="size-5 text-success" />
               </div>
               <div className="mt-3">
-                <div className="text-2xl font-bold text-foreground">Stock OK</div>
-                <p className="text-xs text-muted-foreground mt-1">Monitored raw ingredients</p>
+                <div className="text-2xl font-bold text-foreground">Raw ingredients</div>
+                <p className="text-xs text-muted-foreground mt-1">Stock records aren't connected yet</p>
               </div>
               <div className="mt-4">
                 <Button asChild variant="outline" size="sm" className="w-full">
                   <Link to="/portal/inventory">Open Inventory</Link>
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-card p-5 shadow-sm">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-sm font-medium">Cold Storage</span>
-                <ThermometerSun className="size-5 text-amber-500" />
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl font-bold text-foreground">Sensors Live</div>
-                <p className="text-xs text-muted-foreground mt-1">Realtime DHT & environmental stats</p>
-              </div>
-              <div className="mt-4">
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link to="/portal/environment">View Storage Logs</Link>
                 </Button>
               </div>
             </div>

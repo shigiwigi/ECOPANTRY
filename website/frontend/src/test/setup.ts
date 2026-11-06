@@ -22,6 +22,17 @@ Object.defineProperty(window, "matchMedia", {
   })),
 })
 
+// jsdom has no ResizeObserver; Recharts' ResponsiveContainer needs one to exist.
+if (!("ResizeObserver" in window)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, "ResizeObserver", { writable: true, value: ResizeObserverStub })
+  Object.defineProperty(globalThis, "ResizeObserver", { writable: true, value: ResizeObserverStub })
+}
+
 export function mockSystemTheme(dark: boolean) {
   systemDark = dark
   listeners.forEach((listener) => listener({ matches: dark } as MediaQueryListEvent))
