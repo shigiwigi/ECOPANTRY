@@ -45,3 +45,6 @@ Thumbs.db
 
 # Generated local artifacts
 coverage/
+
+# Neon CLI local context (project id); never commit connection details
+.neon
