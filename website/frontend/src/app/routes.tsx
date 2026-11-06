@@ -6,6 +6,7 @@ import { PublicLayout } from "@/components/layout/PublicLayout"
 import { PORTAL_MODULES, type PortalModule } from "@/config/portal-modules"
 import { RequireAuth } from "@/features/auth/RequireAuth"
 import { RequireRole } from "@/features/auth/RequireRole"
+import UnauthorizedUserPage from "@/pages/public/UnauthorizedUserPage"
 
 // Custom pages; every other module renders the generic ModulePage until its API exists.
 const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = {
@@ -14,6 +15,7 @@ const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = 
   scanner: () => import("@/pages/portal/ScannerPage"),
   qr: () => import("@/pages/portal/LabelsPage"),
   settings: () => import("@/pages/portal/SettingsPage"),
+  users: () => import("@/pages/portal/UsersPage"),
 }
 
 function portalRoute(module: PortalModule): RouteObject {
@@ -62,6 +64,11 @@ export const routes: RouteObject[] = [
       {
         path: "portal/sign-in",
         lazy: () => import("@/features/auth/SignInPage").then((m) => ({ Component: m.default })),
+      },
+      {
+        // Standalone fallback page for unpermitted/ordinary users
+        path: "unauthorized",
+        element: <UnauthorizedUserPage />,
       },
       {
         // Management portal: requires a staff session; each page also checks its roles.

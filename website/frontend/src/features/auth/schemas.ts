@@ -1,8 +1,7 @@
 import { z } from "zod"
-import { ROLES } from "./roles"
 
 export const signInSchema = z.object({
-  email: z.email("Enter a valid email address."),
+  email: z.string().email("Enter a valid email address."),
   password: z.string().min(1, "Enter your password."),
 })
 
@@ -13,8 +12,9 @@ const sessionUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  role: z.enum(ROLES),
-  permissions: z.array(z.string()),
+  // Accepts backend codes ("storekeeper", "inspector") and frontend codes ("shopkeeper", "food_inspector", "admin")
+  role: z.string(),
+  permissions: z.array(z.string()).optional().default([]),
 })
 
 /**
@@ -24,7 +24,7 @@ const sessionUserSchema = z.object({
 export const sessionResponseSchema = z.object({
   user: sessionUserSchema,
   csrf_token: z.string().min(1),
-  expires_at: z.string(),
+  expires_at: z.string().optional(),
 })
 
 export type SessionResponse = z.infer<typeof sessionResponseSchema>

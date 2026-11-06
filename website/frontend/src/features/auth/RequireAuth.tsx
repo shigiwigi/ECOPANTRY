@@ -23,5 +23,10 @@ export function RequireAuth() {
     return <Navigate to="/portal/sign-in" replace state={state} />
   }
 
+  const validRoles = ["admin", "shopkeeper", "food_inspector"]
+  if (!validRoles.includes(user.role)) {
+    return <Navigate to="/unauthorized" replace />
+  }
+
   return <Outlet />
 }
