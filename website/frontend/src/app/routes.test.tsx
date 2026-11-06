@@ -9,7 +9,7 @@ import { ThemeProvider } from "@/features/theme/ThemeProvider"
 import { routes } from "./routes"
 
 function staff(role: Role): StaffUser {
-  return { id: "u1", name: "Test User", email: "test@example.com", role, permissions: [] }
+  return { id: "u1", name: "Test User", email: "test@example.com", role }
 }
 
 function renderAt(path: string, user: StaffUser | null = null) {
@@ -60,7 +60,7 @@ describe("routing", () => {
   })
 
   it("shows only the modules a storekeeper may use", async () => {
-    renderAt("/portal", staff("storekeeper"))
+    renderAt("/portal", staff("shopkeeper"))
     const nav = await screen.findByRole("navigation", { name: "Portal" })
     expect(within(nav).getByRole("link", { name: "Inventory" })).toBeInTheDocument()
     expect(within(nav).getByRole("link", { name: "QR labels" })).toBeInTheDocument()
@@ -69,7 +69,7 @@ describe("routing", () => {
   })
 
   it("blocks a role from a page it can't use, even by direct URL", async () => {
-    renderAt("/portal/devices", staff("inspector"))
+    renderAt("/portal/devices", staff("food_inspector"))
     expect(
       await screen.findByRole("heading", { name: "You don't have access to this page", level: 1 }),
     ).toBeInTheDocument()
@@ -89,7 +89,7 @@ describe("routing", () => {
   })
 
   it("keeps the portal sidebar on an unknown portal page", async () => {
-    renderAt("/portal/no-such-module", staff("storekeeper"))
+    renderAt("/portal/no-such-module", staff("shopkeeper"))
     expect(await screen.findByRole("heading", { name: "This page doesn't exist", level: 1 })).toBeInTheDocument()
     expect(screen.getByRole("navigation", { name: "Portal" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/portal")
@@ -104,7 +104,7 @@ describe("routing", () => {
   })
 
   it("names the portal module in the tab title", async () => {
-    renderAt("/portal/inventory", staff("storekeeper"))
+    renderAt("/portal/inventory", staff("shopkeeper"))
     await screen.findByRole("heading", { name: "Ingredient inventory", level: 1 })
     expect(document.title).toBe("Ingredient inventory | EcoPantry portal")
   })
@@ -127,7 +127,7 @@ describe("routing", () => {
   })
 
   it("keeps storekeepers and inspectors out of the catalogue module", async () => {
-    for (const role of ["storekeeper", "inspector"] as const) {
+    for (const role of ["shopkeeper", "food_inspector"] as const) {
       renderAt("/portal/catalogue", staff(role))
       expect(await screen.findByRole("heading", { name: "You don't have access to this page" })).toBeInTheDocument()
       const nav = screen.getByRole("navigation", { name: "Portal" })

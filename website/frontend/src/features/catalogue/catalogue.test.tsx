@@ -79,7 +79,7 @@ function renderAt(path: string, user: StaffUser | null = null, { isPreview = fal
   return router
 }
 
-const ADMIN: StaffUser = { id: "a1", name: "Ada Admin", email: "ada@example.test", role: "admin", permissions: ["catalogue.manage"] }
+const ADMIN: StaffUser = { id: "a1", name: "Ada Admin", email: "ada@example.test", role: "admin" }
 
 beforeEach(() => setCsrfToken(null))
 afterEach(() => vi.unstubAllGlobals())
