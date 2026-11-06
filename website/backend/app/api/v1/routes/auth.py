@@ -115,11 +115,7 @@ def _verify_google_token(id_token: str) -> dict:
 @router.post(
     "/register",
     response_model=SessionResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="User sets their own password for an authorized account",
-    responses={
-        400: {"model": ErrorResponse, "description": "Account not authorized or already claimed"},
-    },
+    summary="Register/claim pre-authorized staff account",
 )
 def register(
     body: RegisterRequest,
@@ -130,45 +126,40 @@ def register(
 ) -> SessionResponse:
     client = ClientInfo.from_request(request)
     cors = _cors_headers(request)
+    normalized_email = body.email.strip().lower()
 
-    normalized_email = body.email.lower().strip()
+    # 1. Lookup the employee record
+    employee = db.scalar(
+        select(Employee).where(Employee.email == normalized_email)
+    )
 
-    # 1. Check if the admin authorized this email in the employees table
-    employee = db.query(Employee).filter(Employee.email == normalized_email).first()
-
-    if employee is None:
+    # 2. If no record exists OR if the account is deactivated / removed by admin
+    if not employee or employee.status != "active" or not employee.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This email has not been authorized. Ask an administrator to invite you.",
+            detail="ordinary_user_no_permission",
             headers=cors,
         )
 
-    # 2. Check if the user already set a password (dummy password check)
-    # When authorized without a user password, password_hash starts with "!oauth" or random placeholder
-    if employee.password_hash and not employee.password_hash.startswith("!oauth"):
-        # If last_login_at is already set or they have a valid password set previously
-        if employee.last_login_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This account has already been registered. Please sign in instead.",
-                headers=cors,
-            )
+    # 3. Check if account already has a real password (already registered)
+    # If your setup flags pending invites with "!oauth_pending_registration" or empty/dummy hash:
+    if employee.password_hash and not employee.password_hash.startswith("!"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account is already registered. Please sign in instead.",
+            headers=cors,
+        )
 
-    # 3. Hash and save the password chosen by the user
+    # 4. Set the user's chosen password
+    check_new_password(body.password, employee.email)
     employee.password_hash = hash_password(body.password)
-    if body.full_name and not employee.full_name:
-        employee.full_name = body.full_name.strip()
-    employee.status = "active"
-    employee.deactivated_at = None
+    employee.last_login_at = utcnow()
+    employee.failed_login_attempts = 0
+    employee.locked_until = None
 
-    record_event(db, "auth.registered", actor=employee, target=employee, client=client)
-
-    # 4. Clear any stale session cookies and start an active session
-    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
-    if previous is not None:
-        revoke_session(previous, "replaced")
-
+    # Revoke any prior orphan sessions and start a new session
     auth_session, token = start_session(db, settings, employee, client)
+    record_event(db, "auth.registered", actor=employee, target=employee, client=client)
     db.commit()
 
     set_session_cookie(response, settings, token)
