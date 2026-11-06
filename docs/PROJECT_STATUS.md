@@ -27,10 +27,10 @@ Implementation status:
 - [x] Authentication schema implemented (migration `0002`: roles, permissions, employees, sessions, audit events)
 - [x] Public catalogue schema implemented (migration `0003`: catalogue categories and products, `catalogue.manage` permission)
 - [ ] Business schema implemented (inventory, batches, suppliers, monitoring, waste)
-- [ ] Inventory firmware implemented
-- [ ] Waste-bin firmware implemented
+- [x] Inventory firmware implemented (`software/firmware/inventory-esp32/`: one ESP32 with DHT11, HX711 bin weight, pH, MFRC522, LCD; builds and its core logic is unit-tested; not yet run against the API on the real board)
+- [ ] Waste-bin firmware implemented (the bin's load cell is read by the inventory station; HC-SR04 fill level not built)
 - [ ] ESP32-CAM firmware documented
-- [ ] Hardware wiring diagrams added
+- [x] Inventory-station wiring added (`hardware/inventory-station/README.md`); HC-SR04 and ESP32-CAM wiring still to do
 - [ ] Integration tests completed
 
 ## Milestone 1: frontend foundation (done)
@@ -133,6 +133,36 @@ Not done yet:
 - [ ] Labels printed from batch records instead of typed values
 - [ ] Physical device and real Safari, Edge, Chrome-on-Android testing (checklist in QR_LABELS.md)
 - [ ] Expiry lists and FEFO
+
+## Hardware integration: inventory station (M5 device auth, M9–M11, started 2026-11-06)
+
+How it fits together: [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md).
+
+Implemented and tested:
+- [x] Migration `0004`: `devices`, `device_live_usage`, `sensor_readings`, `rfid_cards`, `rfid_scans`; audit events may have a `device` actor
+- [x] Device authentication: per-device bearer token, SHA-256 stored, shown once, rotation, disable/enable, last seen, firmware version. Staff cookies and device tokens are refused on each other's routes.
+- [x] Live sessions:
+  - uploads only while live: power-on 5 min, card tap 15 min
+  - per-device daily budget of 240 min
+  - 409 `session_not_live` outside a session, 429 for uploads that are too fast
+  - administrators can stop a session
+- [x] Readings: batches of up to 50, server timestamps from the station's uptime offsets, range checks, failed sensors stored as NULL
+- [x] Portal API: stations with their latest reading and stale flag, and bucketed history (1 h, 6 h, 24 h, 7 d), each metric behind its own view permission
+- [x] RFID: card assignment and revocation by administrators, server-side card check on every tap, every tap recorded
+- [x] CLI: `create-device`, `rotate-device-token`, `list-devices`
+- [x] Backend tests: `tests/test_devices.py`, `tests/test_sensors_and_cards.py`, CLI tests
+- [x] Firmware (`software/firmware/inventory-esp32/`):
+  - built on espressif32 8.0.0 with pinned libraries
+  - network on its own FreeRTOS task; HTTPS with pinned root CAs
+  - session state machine; offline buffer; serial calibration saved in NVS
+  - 19 host unit tests (`pio test -e native`)
+- [x] Wiring and cautions: `hardware/inventory-station/README.md`
+
+Not done yet:
+- [ ] Flash the firmware and run it against the API on the real station (local LAN first, then Render)
+- [ ] Thresholds and alerts on readings
+- [ ] HC-SR04 fill level, waste records, pH records workflow
+- [ ] Data retention for `sensor_readings` (one row per 10 s while live, about 2 MB per live day)
 
 ## Deployment (configuration prepared, not yet deployed)
 

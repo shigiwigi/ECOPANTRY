@@ -197,6 +197,8 @@ Acceptance criteria:
    sessions. Devices never reach the database directly.
 5. `audit_events` can target any record type, not only employees.
 
+Status 2026-11-06: criterion 4 is done ahead of the rest (migration `0004`, `app/auth/device.py`, see [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md)), and criterion 5 was done in M4. The device, sensor-reading and RFID-card tables are designed and migrated. The other business tables are not.
+
 ### M6 Inventory management: Structure only
 
 Depends on M5. Acceptance criteria:
@@ -240,10 +242,9 @@ Depends on M6 and M7; M9–M11 add their panels later. Acceptance criteria:
    are checked in both themes.
 3. No placeholder figures. Panels without data show empty states.
 
-### M9 Environmental monitoring: Structure only, no firmware
+### M9 Environmental monitoring: In progress
 
-Depends on M5 (device auth) and the inventory-station hardware. DHT model must
-be confirmed first (decision D8). Acceptance criteria:
+Depends on M5 (device auth) and the inventory-station hardware (DHT11, decision D8). Acceptance criteria:
 
 1. Firmware in `software/firmware/inventory-esp32/` (PlatformIO, Arduino)
    posting temperature and humidity to an authenticated endpoint.
@@ -253,7 +254,13 @@ be confirmed first (decision D8). Acceptance criteria:
    offline/stale states from real communication.
 4. Wiring diagram in `hardware/inventory-station/`; tested with real readings.
 
-### M10 RFID employees and pH monitoring: Structure only, no firmware
+Status 2026-11-06:
+- **Criterion 1 is met in code.** The firmware builds and its core logic is unit-tested on the host, but it hasn't been flashed and run against the API yet.
+- **Criterion 2 is partly met.** Readings are validated, timestamped and stored, under live sessions. Thresholds and alerts are not built.
+- **Criterion 3:** see PROJECT_STATUS.md for the portal pages.
+- **Criterion 4:** the wiring is documented; tests with real readings are still to do.
+
+### M10 RFID employees and pH monitoring: In progress (cards, taps and pH readings stored; no pH records workflow)
 
 Depends on M9 (same ESP32) and M3. Acceptance criteria:
 
@@ -265,11 +272,11 @@ Depends on M9 (same ESP32) and M3. Acceptance criteria:
 4. Staff-management screen (M3 follow-up) delivered here at the latest.
 5. MFRC522 at 3.3 V and pH ADC limits documented in the wiring.
 
-### M11 Smart waste bin: Structure only, no firmware
+### M11 Smart waste bin: In progress (bin weight only, from the inventory station)
 
 Depends on M9. Acceptance criteria:
 
-1. Firmware in `software/firmware/waste-bin-esp32/` sending weight (HX711) and
+1. Firmware sending weight (HX711) and
    fill distance (HC-SR04, ECHO level-shifted) to an authenticated endpoint.
 2. Calibration procedure against the actual bin, recorded.
 3. Waste records with category, reason, employee and time; weight and fill
@@ -313,7 +320,7 @@ separate.
   product list, photos). The site hides these until they exist.
 - Product images (D6) and the contact form (D7) need decisions before they
   can be built.
-- Hardware milestones need the physical units and the confirmed DHT model.
+- Hardware milestones need the physical units. The inventory station exists (one ESP32, DHT11); the HC-SR04 and the ESP32-CAM aren't wired yet.
 
 ## Decisions needed
 
@@ -326,7 +333,9 @@ separate.
 | D5 | When to deploy a preview | **Decided:** now, for the project demonstration, from the `development` branch |
 | D6 | Product image storage | Store uploads behind the API (validated type and size, re-encoded) in object storage chosen with D4; until then, no images |
 | D7 | Contact form: store enquiries, email them, or both; spam protection; retention period; who reads them | Store in PostgreSQL, readable by administrators in the portal, honeypot field plus proxy rate limiting, 12-month retention, privacy note on the form |
-| D8 | Exact DHT sensor model | Confirm the part on the board before M9 |
+| D8 | Exact DHT sensor model | **Decided (2026-11-06):** DHT11, read with the Adafruit DHT library |
+| D12 | Prototype hardware layout | **Decided (2026-11-06):** one ESP32 carries the inventory-station sensors and the waste-bin load cell (see [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md)). A separate waste-bin controller only if the bin moves. |
+| D13 | Keeping free-tier hosting asleep | **Decided (2026-11-06):** stations upload only in live sessions (power-on 5 min, card tap 15 min, 240 min per day), enforced by the backend |
 | D9 | Alert notification channel (email, SMS, none) | Portal-only alerts for the prototype |
 | D10 | Who manages the public catalogue | Administrators only (implemented that way; adding Storekeepers is one migration) |
 | D11 | Allergen and ingredient information on public product pages | Leave out until the owners can supply verified information; wrong allergen data is a safety risk |

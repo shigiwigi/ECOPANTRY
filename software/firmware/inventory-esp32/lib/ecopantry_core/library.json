@@ -1,0 +1,7 @@
+{
+  "name": "ecopantry_core",
+  "version": "0.1.0",
+  "description": "Hardware-independent logic for the EcoPantry sensor station: pH maths, card UIDs, reading validation, upload JSON, ring buffer and the live-session state machine. No Arduino headers, so it is unit-tested on the host with `pio test -e native`.",
+  "frameworks": "*",
+  "platforms": "*"
+}
