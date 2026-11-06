@@ -7,6 +7,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
+from sqlalchemy import select
 import firebase_admin
 from firebase_admin import auth as fb_auth
 
@@ -21,8 +22,8 @@ from app.auth.service import (
     WrongPasswordError,
     authenticate,
     change_own_password,
-    find_session,
     check_new_password,
+    find_session,
     hash_password,
     permissions_of,
     revoke_session,
@@ -31,7 +32,7 @@ from app.auth.service import (
     start_session,
     utcnow,
 )
-from app.core.security import hash_password, tokens_match
+from app.core.security import tokens_match
 from app.db.session import SessionDep
 from app.models.auth import Employee, Role
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, SessionResponse, StaffUser
@@ -43,7 +44,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 FIREBASE_PROJECT_ID = "ecopantry-a7342"
-
 try:
     if not firebase_admin._apps:
         firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
