@@ -22,6 +22,8 @@ from app.auth.service import (
     authenticate,
     change_own_password,
     find_session,
+    check_new_password,
+    hash_password,
     permissions_of,
     revoke_session,
     session_end_reason,
@@ -112,13 +114,14 @@ def _verify_google_token(id_token: str) -> dict:
     except Exception as err:
         logger.error("Token verification error: %s", err)
         raise ValueError("Invalid Google authentication token") from err
+
 @router.post(
     "/register",
     response_model=SessionResponse,
     summary="Register/claim pre-authorized staff account",
 )
 def register(
-    body: RegisterRequest,
+    body: LoginRequest,  # or RegisterRequest depending on your schema name
     request: Request,
     response: Response,
     db: SessionDep,
@@ -128,12 +131,12 @@ def register(
     cors = _cors_headers(request)
     normalized_email = body.email.strip().lower()
 
-    # 1. Lookup the employee record
+    # 1. Look up user
     employee = db.scalar(
         select(Employee).where(Employee.email == normalized_email)
     )
 
-    # 2. If no record exists OR if the account is deactivated / removed by admin
+    # 2. Block unlisted, non-active, or deactivated accounts
     if not employee or employee.status != "active" or not employee.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -141,8 +144,7 @@ def register(
             headers=cors,
         )
 
-    # 3. Check if account already has a real password (already registered)
-    # If your setup flags pending invites with "!oauth_pending_registration" or empty/dummy hash:
+    # 3. Block if already registered
     if employee.password_hash and not employee.password_hash.startswith("!"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -150,14 +152,13 @@ def register(
             headers=cors,
         )
 
-    # 4. Set the user's chosen password
+    # 4. Set password & start session
     check_new_password(body.password, employee.email)
     employee.password_hash = hash_password(body.password)
     employee.last_login_at = utcnow()
     employee.failed_login_attempts = 0
     employee.locked_until = None
 
-    # Revoke any prior orphan sessions and start a new session
     auth_session, token = start_session(db, settings, employee, client)
     record_event(db, "auth.registered", actor=employee, target=employee, client=client)
     db.commit()
