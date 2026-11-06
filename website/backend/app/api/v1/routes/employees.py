@@ -144,8 +144,10 @@ def delete_employee(
     db: SessionDep,
 ) -> Response:
     employee = db.scalar(select(Employee).where(Employee.id == employee_id))
+    
+    # If the user is already gone, return 204 so the frontend stays clean without a 404 alert
     if not employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     if employee.id == principal.employee.id:
         raise HTTPException(
@@ -153,23 +155,22 @@ def delete_employee(
             detail="Cannot delete your own active administrator account.",
         )
 
-    # 1. Revoke and delete active browser sessions
+    # 1. Clean up active sessions
     db.execute(delete(AuthSession).where(AuthSession.employee_id == employee_id))
 
     # 2. Nullify references where this user created other accounts
     other_employees = db.scalars(select(Employee).where(Employee.created_by_id == employee_id)).all()
     for other in other_employees:
         other.created_by_id = None
-
     db.flush()
 
     try:
-        # 3. Attempt direct database deletion
+        # 3. Attempt hard delete
         db.delete(employee)
         db.commit()
     except Exception:
         db.rollback()
-        # 4. If foreign keys (like audit history) restrict hard delete, deactivate so they never show up
+        # 4. Fallback: if foreign keys (e.g. audit logs) block deletion, deactivate it so it never appears in list_employees
         emp_to_disable = db.scalar(select(Employee).where(Employee.id == employee_id))
         if emp_to_disable:
             emp_to_disable.status = "disabled"
@@ -177,7 +178,6 @@ def delete_employee(
             db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
 
 @router.post("/{employee_id}/deactivate", response_model=EmployeeOut, summary="Deactivate and sign out everywhere")
 def deactivate(employee_id: uuid.UUID, request: Request, principal: Manager, db: SessionDep) -> EmployeeOut:
