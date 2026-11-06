@@ -20,6 +20,8 @@ PUBLIC_ROUTES = {
     ("get", "/api/v1/health/ready"),  # readiness, no data
     ("post", "/api/v1/auth/login"),  # how a session starts
     ("post", "/api/v1/auth/logout"),  # ends a session if there is one; harmless without
+    ("post", "/api/v1/auth/google"),  # starts a session from a signature-verified Google ID token
+    ("post", "/api/v1/auth/register"),  # an admin-added employee sets their first password
     # Customer website: published catalogue only, public fields only (see tests/test_catalogue.py).
     ("get", "/api/v1/public/catalogue"),
     ("get", "/api/v1/public/catalogue/products/{slug}"),
