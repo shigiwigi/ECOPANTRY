@@ -1,8 +1,21 @@
-"""The session cookie: HttpOnly, SameSite=None, Path=/, and Secure for cross-origin deployments."""
+"""The session cookie: HttpOnly, Path=/.
+
+Where cookies are Secure (always in production) the cookie is SameSite=None
+with a __Host- name, so a frontend on another origin (Firebase Hosting) can
+still send it; unsafe requests are protected by the X-CSRF-Token header.
+In local development and tests it is a plain SameSite=Lax cookie, because
+browsers and the test client drop Secure cookies over plain http.
+"""
+
+from typing import Literal
 
 from fastapi import Response
 
 from app.core.config import Settings
+
+
+def _same_site(settings: Settings) -> Literal["none", "lax"]:
+    return "none" if settings.cookie_secure else "lax"
 
 
 def set_session_cookie(response: Response, settings: Settings, token: str) -> None:
@@ -11,9 +24,9 @@ def set_session_cookie(response: Response, settings: Settings, token: str) -> No
         token,
         max_age=int(settings.session_absolute_timeout.total_seconds()),
         path="/",
-        secure=True,
+        secure=settings.cookie_secure,
         httponly=True,
-        samesite="none",
+        samesite=_same_site(settings),
     )
 
 
@@ -21,9 +34,9 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
         settings.session_cookie_name,
         path="/",
-        secure=True,
+        secure=settings.cookie_secure,
         httponly=True,
-        samesite="none",
+        samesite=_same_site(settings),
     )
 
 

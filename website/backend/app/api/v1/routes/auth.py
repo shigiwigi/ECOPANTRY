@@ -1,9 +1,6 @@
 """Staff sign-in, sign-up, Google OAuth exchange, sign-out, session and password change."""
 
-import base64
-import json
 import logging
-import time
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -80,40 +77,21 @@ def _session_response(principal: Principal, settings: SettingsDep) -> SessionRes
 
 
 def _verify_google_token(id_token: str) -> dict:
-    """Fast JWT verification for Firebase ID tokens to avoid remote cert blocking."""
+    """Verify a Firebase ID token: signature (Google's public keys), audience, issuer and expiry.
+
+    Never decode the token without checking its signature: the claims are
+    attacker-controlled until the signature is verified, so a hand-made token
+    could name any employee's email.
+    """
     try:
-        parts = id_token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Token is not a valid 3-part JWT")
-
-        payload_b64 = parts[1]
-        payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
-        payload_json = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8")
-        claims = json.loads(payload_json)
-
-        expected_iss = f"https://securetoken.google.com/{FIREBASE_PROJECT_ID}"
-        aud = claims.get("aud")
-        iss = claims.get("iss")
-
-        if aud != FIREBASE_PROJECT_ID:
-            raise ValueError(f"Audience mismatch: expected {FIREBASE_PROJECT_ID}, got {aud}")
-
-        if iss != expected_iss:
-            raise ValueError(f"Issuer mismatch: expected {expected_iss}, got {iss}")
-
-        now = int(time.time())
-        if claims.get("exp", 0) < now:
-            raise ValueError("Google authentication token has expired")
-
-        return claims
-    except Exception as fast_err:
-        logger.info("Fast JWT claims decode failed: %s; trying Firebase Admin", fast_err)
-
-    try:
-        return fb_auth.verify_id_token(id_token, check_revoked=False)
+        claims = fb_auth.verify_id_token(id_token, check_revoked=False)
     except Exception as err:
-        logger.error("Token verification error: %s", err)
+        # The reason can include token contents; log only its type.
+        logger.info("Rejected a Google ID token (%s)", type(err).__name__)
         raise ValueError("Invalid Google authentication token") from err
+    if claims.get("email_verified") is not True:
+        raise ValueError("Google account email is not verified")
+    return claims
 
 @router.post(
     "/register",
@@ -148,6 +126,9 @@ def register(
             detail="Account is already registered. Please sign in instead.",
             headers=cors,
         )
+
+    # Same password rules as a password change (raises a 400 with the reason).
+    check_new_password(body.password, normalized_email)
 
     employee.password_hash = hash_password(body.password)
     employee.last_login_at = utcnow()
