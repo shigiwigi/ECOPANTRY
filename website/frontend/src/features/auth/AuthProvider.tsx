@@ -3,7 +3,7 @@ import { ApiError, apiRequest, onUnauthorized, setCsrfToken } from "@/lib/api/cl
 import { auth } from "@/lib/firebase"
 import { AuthContext, type AuthContextValue, type SessionEndReason, type SessionStatus } from "./auth-context"
 import { PORTAL_PREVIEW_ENABLED, PREVIEW_USER } from "./preview"
-import type { Role, StaffUser } from "./roles"
+import { normalizeRole, type Role, type StaffUser } from "./roles"
 import type { SignInValues } from "./schemas"
 
 interface AuthState {
@@ -17,12 +17,15 @@ const INITIAL: AuthState = PORTAL_PREVIEW_ENABLED
   ? { user: PREVIEW_USER, status: "ready", endReason: null }
   : { user: null, status: "unknown", endReason: null }
 
-/** Validates a login or /auth/me response and keeps its CSRF token in memory. */
+/** Validates a login or /auth/me response, normalizes role codes, and keeps its CSRF token in memory. */
 async function acceptSession(response: unknown): Promise<StaffUser> {
   const { sessionResponseSchema } = await import("./schemas")
   const session = sessionResponseSchema.parse(response)
   setCsrfToken(session.csrf_token)
-  return session.user
+  return {
+    ...session.user,
+    role: normalizeRole(session.user.role),
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -98,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isPreview])
 
   const setPreviewRole = useCallback(
-    (role: Role) => setState((current) => (current.user ? { ...current, user: { ...current.user, role } } : current)),
+    (role: Role) => setState((current) => (current.user ? { ...current, user: { ...current.user, role: normalizeRole(role) } } : current)),
     [],
   )
 

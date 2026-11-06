@@ -86,6 +86,16 @@ export default function SignInPage() {
       } catch (error: any) {
         if (!isMounted) return
         console.error("Redirect auth error:", error)
+        const isUnauthorized =
+          error?.status === 403 ||
+          error?.message?.includes("ordinary_user_no_permission") ||
+          error?.message?.toLowerCase().includes("deactivated")
+
+        if (isUnauthorized) {
+          navigate("/unauthorized", { replace: true })
+          return
+        }
+
         if (error instanceof ApiError) {
           setFormError(error.message)
         } else {
@@ -121,8 +131,8 @@ export default function SignInPage() {
         setFormError("Passwords do not match.")
         return
       }
-      if (values.password.length < 6) {
-        setFormError("Password must be at least 6 characters.")
+      if (values.password.length < 12) {
+        setFormError("Password must be at least 12 characters.")
         return
       }
     }
@@ -132,7 +142,7 @@ export default function SignInPage() {
         const registerResponse = await apiRequest("/auth/register", {
           method: "POST",
           body: {
-            email: values.email,
+            email: values.email.trim().toLowerCase(),
             password: values.password,
           },
         })
@@ -140,18 +150,60 @@ export default function SignInPage() {
           await setSession(registerResponse)
         }
       } else {
-        await signIn({ email: values.email, password: values.password })
+        await signIn({ email: values.email.trim().toLowerCase(), password: values.password })
       }
       navigate(destination, { replace: true })
-    } catch (error) {
+    } catch (error: any) {
+      // 1. Forbidden / unauthorized / unlisted accounts redirect to /unauthorized
+      const isForbidden =
+        (error instanceof ApiError && error.status === 403) ||
+        error?.message?.includes("not been authorized") ||
+        error?.message?.includes("ordinary_user_no_permission") ||
+        error?.message?.toLowerCase().includes("deactivated")
+
+      if (isForbidden) {
+        navigate("/unauthorized", { replace: true })
+        return
+      }
+
+      // 2. Unreachable backend server
       if (error instanceof ApiError && error.isUnreachable) {
         setFormError("Can't reach the EcoPantry server, so sign-in isn't available right now. Try again shortly.")
-      } else if (error instanceof ApiError && error.status === 401) {
-        setFormError("That email and password don't match an account.")
-      } else if (error instanceof ApiError) {
+        return
+      }
+
+      // 3. Unregistered account (404)
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 ||
+          error.message?.toLowerCase().includes("not registered") ||
+          error.message?.includes("account_not_found"))
+      ) {
+        setFormError("This account is not registered.")
+        return
+      }
+
+      // 4. Wrong password (401)
+      if (
+        error instanceof ApiError &&
+        (error.status === 401 ||
+          error.message?.toLowerCase().includes("incorrect password") ||
+          error.message?.includes("incorrect_password") ||
+          error.message?.includes("invalid_credentials"))
+      ) {
+        setFormError("Incorrect password. Please try again.")
+        return
+      }
+
+      // 5. Default fallback
+      if (error instanceof ApiError) {
         setFormError(error.message)
       } else {
-        setFormError(isSignUp ? "Sign-up failed. Try again shortly." : "Sign-in failed because the server sent an unexpected response.")
+        setFormError(
+          isSignUp
+            ? "Sign-up failed. Try again shortly."
+            : "Sign-in failed because the server sent an unexpected response."
+        )
       }
     }
   })
@@ -188,15 +240,31 @@ export default function SignInPage() {
       if (idToken) {
         setIsExchangingSession(true)
 
-        const sessionResponse = await apiRequest("/auth/google", {
-          method: "POST",
-          body: { id_token: idToken },
-        })
+        try {
+          const sessionResponse = await apiRequest("/auth/google", {
+            method: "POST",
+            body: { id_token: idToken },
+          })
 
-        if (setSession) {
-          await setSession(sessionResponse)
+          if (setSession) {
+            await setSession(sessionResponse)
+          }
+          navigate(destination, { replace: true })
+        } catch (apiErr: any) {
+          const isUnauthorized =
+            apiErr?.status === 403 ||
+            apiErr?.message?.includes("ordinary_user_no_permission") ||
+            apiErr?.message?.toLowerCase().includes("deactivated")
+
+          if (isUnauthorized) {
+            if (auth.currentUser) {
+              await auth.signOut().catch(() => {})
+            }
+            navigate("/unauthorized", { replace: true })
+            return
+          }
+          throw apiErr
         }
-        navigate(destination, { replace: true })
       }
     } catch (error: any) {
       console.error("Google sign-in caught error:", error)

@@ -18,6 +18,7 @@ import {
   ThermometerSun,
   Trash2,
   Truck,
+  Users,
 } from "lucide-react"
 import { ROLES, type Role } from "@/features/auth/roles"
 
@@ -50,8 +51,8 @@ export interface PortalModule {
 }
 
 const ALL = ROLES
-const MANAGE: readonly Role[] = ["admin", "storekeeper"]
-const OVERSIGHT: readonly Role[] = ["admin", "inspector"]
+const MANAGE: readonly Role[] = ["admin", "shopkeeper"]
+const OVERSIGHT: readonly Role[] = ["admin", "food_inspector"]
 
 export const PORTAL_GROUPS: PortalGroup[] = ["Overview", "Stock", "Monitoring", "Records", "System"]
 
@@ -271,6 +272,16 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Status derived from real communication, never hardcoded",
     ],
     requires: "Device API (Phase 8).",
+  },
+  {
+    id: "users",
+    path: "users",
+    label: "Users",
+    title: "User Management",
+    summary: "Authorize staff accounts, assign roles, and modify system access.",
+    icon: Users,
+    group: "System",
+    roles: ["admin"],
   },
   {
     id: "catalogue",

@@ -9,7 +9,7 @@ import { hasRole, ROLE_LABELS, type Role } from "./roles"
 export function RequireRole({ roles, children }: { roles: readonly Role[]; children: ReactNode }) {
   const { user } = useAuth()
 
-  if (!hasRole(user, roles)) {
+  if (!user || !hasRole(user.role, roles)) {
     return (
       <div className="space-y-6">
         <PageHeader

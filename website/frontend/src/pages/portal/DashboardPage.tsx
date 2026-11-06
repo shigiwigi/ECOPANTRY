@@ -1,61 +1,236 @@
-import { Activity, BellRing, CalendarClock, PackageMinus, type LucideIcon } from "lucide-react"
 import { Link } from "react-router"
-import { EmptyState } from "@/components/common/EmptyState"
-import { PageHeader } from "@/components/layout/PageHeader"
-import { getModule, portalHref } from "@/config/portal-modules"
+import {
+  Boxes,
+  CalendarClock,
+  FileText,
+  Package,
+  ScanLine,
+  Shield,
+  ThermometerSun,
+  Users,
+} from "lucide-react"
 import { useAuth } from "@/features/auth/auth-context"
-import { hasRole } from "@/features/auth/roles"
-
-interface DashboardSection {
-  moduleId: string
-  title: string
-  icon: LucideIcon
-  empty: string
-}
-
-// Ordered by urgency: what a storekeeper must act on first.
-const SECTIONS: DashboardSection[] = [
-  { moduleId: "alerts", title: "Open alerts", icon: BellRing, empty: "Alerts appear here once the backend evaluates alert rules." },
-  { moduleId: "expiry", title: "Expiring soon", icon: CalendarClock, empty: "Batches nearing expiry appear here once batch records exist." },
-  { moduleId: "inventory", title: "Low stock", icon: PackageMinus, empty: "Ingredients below their reorder level appear here once inventory is recorded." },
-  { moduleId: "devices", title: "Device health", icon: Activity, empty: "Each ESP32 unit's last contact appears here once devices report to the backend." },
-]
+import { ROLE_LABELS } from "@/features/auth/roles"
+import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const module = getModule("dashboard")
+  const role = user?.role ?? "shopkeeper"
 
   return (
-    <div className="space-y-6">
-      <PageHeader title={module.title} description={module.summary} />
+    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+      {/* Welcome Banner */}
+      <div className="rounded-xl border bg-card p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary uppercase tracking-wider mb-2">
+            {ROLE_LABELS[role]} Dashboard
+          </span>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Welcome back, {user?.name || user?.email || "Staff Member"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {role === "admin" && "Full administrative control over users, inventory, hardware, and safety records."}
+            {role === "shopkeeper" && "Pantry stock monitoring, batch lookups, and ingredient intake management."}
+            {role === "food_inspector" && "Food safety compliance, cold chain logs, and expiration tracking."}
+          </p>
+        </div>
 
-      {/* As many columns as fit at a readable card width, so wide screens use the space without stretching cards. */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))] gap-4">
-        {SECTIONS.map(({ moduleId, title, icon, empty }) => {
-          const target = getModule(moduleId)
-          const canOpen = hasRole(user, target.roles)
-          return (
-            <section key={moduleId} aria-labelledby={`dash-${moduleId}`} className="rounded-lg border bg-card">
-              <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-                <h2 id={`dash-${moduleId}`} className="text-sm font-semibold">
-                  {title}
-                </h2>
-                {canOpen && (
-                  <Link
-                    to={portalHref(target)}
-                    className="-my-1 inline-flex min-h-8 items-center rounded-md px-1 text-sm text-primary underline-offset-4 hover:underline"
-                  >
-                    Open {target.label}
-                  </Link>
-                )}
-              </div>
-              <div className="p-4">
-                <EmptyState icon={icon} title="No data source connected" description={empty} className="border-0 bg-transparent p-0" />
-              </div>
-            </section>
-          )
-        })}
+        {role === "admin" && (
+          <Button asChild className="gap-2 shrink-0">
+            <Link to="/portal/users">
+              <Users className="size-4" />
+              Manage Users
+            </Link>
+          </Button>
+        )}
       </div>
+
+      {/* ADMIN VIEW */}
+      {role === "admin" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-sm font-medium">Access Management</span>
+                <Users className="size-5 text-primary" />
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-foreground">Active Staff</div>
+                <p className="text-xs text-muted-foreground mt-1">Configured roles & accounts</p>
+              </div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link to="/portal/users">View Staff Accounts</Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-sm font-medium">Inventory Health</span>
+                <Package className="size-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-foreground">Stock OK</div>
+                <p className="text-xs text-muted-foreground mt-1">Monitored raw ingredients</p>
+              </div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link to="/portal/inventory">Open Inventory</Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-sm font-medium">Cold Storage</span>
+                <ThermometerSun className="size-5 text-amber-500" />
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-foreground">Sensors Live</div>
+                <p className="text-xs text-muted-foreground mt-1">Realtime DHT & environmental stats</p>
+              </div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link to="/portal/environment">View Storage Logs</Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-sm font-medium">Audit & Compliance</span>
+                <Shield className="size-5 text-blue-500" />
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold text-foreground">Audit Log</div>
+                <p className="text-xs text-muted-foreground mt-1">Immutable change records</p>
+              </div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link to="/portal/audit">Inspect Actions</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SHOPKEEPER VIEW */}
+      {role === "shopkeeper" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Quick Scan</span>
+                  <ScanLine className="size-5 text-primary" />
+                </div>
+                <div className="text-xl font-bold text-foreground">Batch Scanner</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Scan incoming ingredients or verify batch codes using your device camera.
+                </p>
+              </div>
+              <Button asChild className="mt-4 w-full gap-2">
+                <Link to="/portal/scan">
+                  <ScanLine className="size-4" />
+                  Launch Scanner
+                </Link>
+              </Button>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Stock Levels</span>
+                  <Package className="size-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="text-xl font-bold text-foreground">Current Stock</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Check available raw bakery materials, units, and reorder levels.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="mt-4 w-full">
+                <Link to="/portal/inventory">Review Inventory</Link>
+              </Button>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Batch Labels</span>
+                  <Boxes className="size-5 text-amber-500" />
+                </div>
+                <div className="text-xl font-bold text-foreground">Generate Labels</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Create and print printable QR labels for freshly received ingredient containers.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="mt-4 w-full">
+                <Link to="/portal/qr">Create QR Labels</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FOOD INSPECTOR VIEW */}
+      {role === "food_inspector" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Storage Safety</span>
+                  <ThermometerSun className="size-5 text-amber-500" />
+                </div>
+                <div className="text-xl font-bold text-foreground">Temperature Logs</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Monitor cold storage telemetry, historical temperature readings, and breach events.
+                </p>
+              </div>
+              <Button asChild className="mt-4 w-full gap-2">
+                <Link to="/portal/environment">
+                  <ThermometerSun className="size-4" />
+                  Check Temperature
+                </Link>
+              </Button>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Expiry Audits</span>
+                  <CalendarClock className="size-5 text-destructive" />
+                </div>
+                <div className="text-xl font-bold text-foreground">FEFO Verification</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Verify First-Expired, First-Out compliance and identify batches nearing expiration.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="mt-4 w-full">
+                <Link to="/portal/expiry">Inspect Batches</Link>
+              </Button>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-muted-foreground mb-2">
+                  <span className="text-sm font-medium">Compliance Reports</span>
+                  <FileText className="size-5 text-blue-500" />
+                </div>
+                <div className="text-xl font-bold text-foreground">Safety Reports</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Generate and export compliance reports for official food safety records.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="mt-4 w-full">
+                <Link to="/portal/reports">Open Reports</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
