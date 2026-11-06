@@ -94,21 +94,23 @@ The public finished-product catalogue is separate from internal raw ingredient i
 
 ## Hardware
 
-The planned prototype consists of three independent units.
+The plan was three independent units. **The current prototype combines the first two on one ESP32**; the camera unit is still planned.
 
-### 1. Inventory monitoring station
+### 1. Inventory monitoring station (built, one ESP32)
 - ESP32 DevKit V1
 - MFRC522 RFID reader
-- DHT temperature/humidity sensor (confirm exact model)
-- Analog pH sensor kit
-- I2C LCD
+- DHT11 temperature/humidity sensor
+- Analog pH sensor kit (experimental)
+- HX711 and load cell weighing the waste bin
+- 16x2 I2C LCD
 - Buzzer and indicator LEDs
 
+Wiring and pins: `hardware/inventory-station/README.md`. Firmware: `software/firmware/inventory-esp32/`. How it reaches the portal, including the live-session upload cut-off that keeps the free-tier hosting asleep: `docs/HARDWARE_INTEGRATION.md`.
+
 ### 2. Smart waste bin
-- ESP32 controller
-- Load cell
-- HX711 load-cell amplifier
-- HC-SR04 ultrasonic distance sensor
+- Load cell and HX711 (wired to the inventory station's ESP32 in the prototype)
+- HC-SR04 ultrasonic distance sensor (not fitted yet)
+- A separate ESP32 controller only if the bin moves away from the station
 
 The load cell measures weight. The ultrasonic sensor measures distance to the waste surface and is used to estimate fill percentage after calibration.
 
@@ -263,7 +265,7 @@ Use `.env.example` files containing placeholder values only. Current ones:
 
 ## Hardware and safety notes
 
-- Verify the exact DHT sensor model before selecting firmware libraries and accuracy claims.
+- The station uses a DHT11 (±2 °C, ±5 %RH per its datasheet); don't claim better accuracy than that.
 - Power the MFRC522 from 3.3 V.
 - Ensure the pH interface board's analog output cannot exceed the ESP32 ADC input limit.
 - The HC-SR04 ECHO output is typically 5 V; use a suitable voltage divider or level shifter before an ESP32 GPIO.
