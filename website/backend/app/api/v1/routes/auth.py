@@ -13,8 +13,12 @@ from firebase_admin import auth as fb_auth
 from app.auth.cookies import clear_session_cookie, set_session_cookie
 from app.auth.dependencies import CSRF_HEADER, CurrentPrincipal, SettingsDep
 from app.auth.service import (
+    AccountDisabledError,
+    AccountLockedError,
+    AccountNotFoundError,
     CsrfError,
     Principal,
+    WrongPasswordError,
     authenticate,
     change_own_password,
     find_session,
@@ -37,9 +41,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 FIREBASE_PROJECT_ID = "ecopantry-a7342"
-
-# Pre-computed dummy hash so Google signup does not block CPU with key-derivation calculation
-_OAUTH_DUMMY_PASSWORD_HASH = "!oauth_google_account_no_password"
 
 try:
     if not firebase_admin._apps:
@@ -111,60 +112,13 @@ def _verify_google_token(id_token: str) -> dict:
     except Exception as err:
         logger.error("Token verification error: %s", err)
         raise ValueError("Invalid Google authentication token") from err
-
-
-def _get_default_role(db: SessionDep) -> Role:
-    """Finds the staff role or the first existing role in the database."""
-    role = db.query(Role).filter(Role.code == "staff").first()
-    if role is None:
-        role = db.query(Role).first()
-    if role is None:
-        role = Role(code="staff", name="Staff Member", description="Standard staff access")
-        db.add(role)
-        db.flush()
-    return role
-
-
-@router.post(
-    "/login",
-    response_model=SessionResponse,
-    summary="Sign in with email and password",
-    responses={
-        401: {"model": ErrorResponse, "description": "Wrong email or password (`invalid_credentials`)"},
-        403: {"model": ErrorResponse, "description": "Correct password, deactivated account (`account_disabled`)"},
-        429: {"model": ErrorResponse, "description": "Temporarily locked after repeated failures (`account_locked`)"},
-    },
-)
-def login(
-    body: LoginRequest,
-    request: Request,
-    response: Response,
-    db: SessionDep,
-    settings: SettingsDep,
-) -> SessionResponse:
-    client = ClientInfo.from_request(request)
-    employee = authenticate(db, settings, body.email, body.password, client)
-
-    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
-    if previous is not None:
-        revoke_session(previous, "replaced")
-
-    auth_session, token = start_session(db, settings, employee, client)
-    record_event(db, "auth.login_succeeded", actor=employee, target=employee, client=client)
-    db.commit()
-
-    set_session_cookie(response, settings, token)
-    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
-    return _session_response(principal, settings)
-
-
 @router.post(
     "/register",
     response_model=SessionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Register a new account with email and password",
+    summary="User sets their own password for an authorized account",
     responses={
-        400: {"model": ErrorResponse, "description": "Email already registered or invalid input"},
+        400: {"model": ErrorResponse, "description": "Account not authorized or already claimed"},
     },
 )
 def register(
@@ -178,29 +132,38 @@ def register(
     cors = _cors_headers(request)
 
     normalized_email = body.email.lower().strip()
-    existing = db.query(Employee).filter(Employee.email == normalized_email).first()
-    if existing is not None:
+
+    # 1. Check if the admin authorized this email in the employees table
+    employee = db.query(Employee).filter(Employee.email == normalized_email).first()
+
+    if employee is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An account with that email already exists.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This email has not been authorized. Ask an administrator to invite you.",
             headers=cors,
         )
 
-    display_name = body.full_name or normalized_email.split("@")[0].replace(".", " ").title()
-    default_role = _get_default_role(db)
+    # 2. Check if the user already set a password (dummy password check)
+    # When authorized without a user password, password_hash starts with "!oauth" or random placeholder
+    if employee.password_hash and not employee.password_hash.startswith("!oauth"):
+        # If last_login_at is already set or they have a valid password set previously
+        if employee.last_login_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This account has already been registered. Please sign in instead.",
+                headers=cors,
+            )
 
-    employee = Employee(
-        email=normalized_email,
-        full_name=display_name,
-        role_id=default_role.id,
-        status="active",
-        password_hash=hash_password(body.password),
-    )
-    db.add(employee)
-    db.flush()
+    # 3. Hash and save the password chosen by the user
+    employee.password_hash = hash_password(body.password)
+    if body.full_name and not employee.full_name:
+        employee.full_name = body.full_name.strip()
+    employee.status = "active"
+    employee.deactivated_at = None
 
     record_event(db, "auth.registered", actor=employee, target=employee, client=client)
 
+    # 4. Clear any stale session cookies and start an active session
     previous = find_session(db, request.cookies.get(settings.session_cookie_name))
     if previous is not None:
         revoke_session(previous, "replaced")
@@ -212,15 +175,74 @@ def register(
     principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
     return _session_response(principal, settings)
 
+@router.post(
+    "/login",
+    response_model=SessionResponse,
+    summary="Sign in with email and password",
+    responses={
+        401: {"model": ErrorResponse, "description": "Wrong password (`incorrect_password`)"},
+        403: {"model": ErrorResponse, "description": "Deactivated account (`account_disabled`)"},
+        404: {"model": ErrorResponse, "description": "Email not found (`account_not_found`)"},
+        429: {"model": ErrorResponse, "description": "Temporarily locked after repeated failures (`account_locked`)"},
+    },
+)
+def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: SessionDep,
+    settings: SettingsDep,
+) -> SessionResponse:
+    client = ClientInfo.from_request(request)
+    cors = _cors_headers(request)
+
+    try:
+        employee = authenticate(db, settings, body.email, body.password, client)
+    except AccountNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This account is not registered.",
+            headers=cors,
+        )
+    except WrongPasswordError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again.",
+            headers=cors,
+        )
+    except AccountDisabledError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Ask an administrator if you need access again.",
+            headers=cors,
+        )
+    except AccountLockedError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed sign-in attempts. Wait a few minutes and try again.",
+            headers=cors,
+        )
+
+    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
+    if previous is not None:
+        revoke_session(previous, "replaced")
+
+    auth_session, token = start_session(db, settings, employee, client)
+    record_event(db, "auth.login_succeeded", actor=employee, target=employee, client=client)
+    db.commit()
+
+    set_session_cookie(response, settings, token)
+    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
+    return _session_response(principal, settings)
 
 @router.post(
     "/google",
     response_model=SessionResponse,
-    summary="Sign in or register with a verified Google Firebase ID token",
+    summary="Sign in with a verified Google Firebase ID token",
     responses={
         400: {"model": ErrorResponse, "description": "Google account missing verified email"},
         401: {"model": ErrorResponse, "description": "Invalid or expired Firebase ID token"},
-        403: {"model": ErrorResponse, "description": "Deactivated account (`account_disabled`)"},
+        403: {"model": ErrorResponse, "description": "Account not authorized or deactivated"},
     },
 )
 def google_login(
@@ -233,7 +255,7 @@ def google_login(
     client = ClientInfo.from_request(request)
     cors = _cors_headers(request)
 
-    # 1. Instant Google Firebase ID Token validation
+    # 1. Google Firebase ID Token validation
     try:
         decoded_token = _verify_google_token(body.id_token)
     except Exception:
@@ -244,8 +266,6 @@ def google_login(
         )
 
     email = decoded_token.get("email")
-    full_name = decoded_token.get("name") or decoded_token.get("email", "Google User").split("@")[0]
-
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -258,19 +278,15 @@ def google_login(
     # 2. Look up user in Neon PostgreSQL
     employee = db.query(Employee).filter(Employee.email == normalized_email).first()
 
+    # If the user has not been added by an Administrator in /portal/users:
     if employee is None:
-        default_role = _get_default_role(db)
-        employee = Employee(
-            email=normalized_email,
-            full_name=full_name,
-            role_id=default_role.id,
-            status="active",
-            password_hash=_OAUTH_DUMMY_PASSWORD_HASH,
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ordinary_user_no_permission",
+            headers=cors,
         )
-        db.add(employee)
-        db.flush()
-        record_event(db, "auth.google_signup", actor=employee, target=employee, client=client)
-    elif not employee.is_active:
+
+    if not employee.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account has been deactivated.",
