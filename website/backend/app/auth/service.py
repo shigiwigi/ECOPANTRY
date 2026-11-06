@@ -29,6 +29,18 @@ from app.services.audit import ClientInfo, record_event
 LAST_SEEN_RESOLUTION = timedelta(seconds=60)
 
 
+class AccountNotFoundError(AppError):
+    status_code = 404
+    code = "account_not_found"
+    detail = "This account is not registered."
+
+
+class WrongPasswordError(NotAuthenticatedError):
+    status_code = 401
+    code = "incorrect_password"
+    detail = "Incorrect password. Please try again."
+
+
 class InvalidCredentialsError(NotAuthenticatedError):
     code = "invalid_credentials"
     detail = "That email and password don't match an account."
@@ -116,7 +128,7 @@ def authenticate(db: Session, settings: Settings, email: str, password: str, cli
         # The typed email isn't stored: people sometimes type a password into that field.
         record_event(db, "auth.login_failed", client=client, details={"reason": "unknown_account"})
         db.commit()
-        raise InvalidCredentialsError()
+        raise AccountNotFoundError()
 
     if employee.locked_until is not None and employee.locked_until > now:
         record_event(db, "auth.login_blocked", actor=employee, target=employee, client=client, details={"reason": "locked"})
@@ -132,7 +144,7 @@ def authenticate(db: Session, settings: Settings, email: str, password: str, cli
         db.commit()
         if locked:
             raise AccountLockedError()
-        raise InvalidCredentialsError()
+        raise WrongPasswordError()
 
     if not employee.is_active:
         # The password was right, so telling them the account is off reveals nothing to a guesser.

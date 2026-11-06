@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -14,7 +15,7 @@ class EmployeeOut(BaseModel):
     id: uuid.UUID
     email: str
     name: str
-    role: RoleCode
+    role: str
     role_name: str
     status: Literal["active", "disabled"]
     last_login_at: datetime | None
@@ -27,7 +28,7 @@ class EmployeeOut(BaseModel):
             id=employee.id,
             email=employee.email,
             name=employee.full_name,
-            role=RoleCode(employee.role.code),
+            role=employee.role.code,
             role_name=employee.role.name,
             status="active" if employee.is_active else "disabled",
             last_login_at=employee.last_login_at,
@@ -39,5 +40,11 @@ class EmployeeOut(BaseModel):
 class EmployeeCreate(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     name: str = Field(min_length=1, max_length=120)
-    role: RoleCode
-    password: str = Field(min_length=1, max_length=1024, description="Initial password; share it with the employee securely.")
+    role: str = Field(default="storekeeper")
+    password: str | None = Field(
+        default=None,
+        description="Initial password; if not provided, a random one is generated.",
+    )
+
+    def get_password(self) -> str:
+        return self.password if self.password else secrets.token_urlsafe(16)

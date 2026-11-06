@@ -38,10 +38,11 @@ def _validated_name(name: str) -> str:
     return cleaned
 
 
-def get_role(db: Session, code: RoleCode) -> Role:
-    role = db.scalars(select(Role).where(Role.code == code.value)).one_or_none()
-    if role is None:  # Only if migrations haven't run.
-        raise RuntimeError(f"Role {code.value!r} is missing; run `alembic upgrade head`.")
+def get_role(db: Session, code: RoleCode | str) -> Role:
+    role_code_str = code.value if hasattr(code, "value") else str(code)
+    role = db.scalars(select(Role).where(Role.code == role_code_str)).one_or_none()
+    if role is None:
+        raise RoleNotFoundError(role_code_str)
     return role
 
 
