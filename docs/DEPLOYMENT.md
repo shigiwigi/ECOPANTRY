@@ -79,7 +79,8 @@ Only the API has settings. The website needs none.
 | `DATABASE_CONNECT_TIMEOUT` | `15` | `render.yaml` |
 
 Leave everything else at the defaults in `app/core/config.py` (60 min idle /
-12 h absolute sessions, 5 failed sign-ins → 15 min lockout). Never set
+12 h absolute sessions, 5 failed sign-ins → 15 min lockout, sensor-station
+live sessions of 5/15 min capped at 240 min a day; see "Sensor station" below). Never set
 `SESSION_COOKIE_SECURE=false`; production refuses to start with it.
 
 **Vercel**
@@ -209,6 +210,30 @@ rm -f "$JAR"; unset CSRF
 
 Repeat the middle block for each account before signing out. Every account
 change is recorded in the audit log.
+
+### Sensor station
+
+Details: [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md).
+
+1. As an administrator, open **Devices** in the portal and register the station. Copy the token it shows once.
+2. In `software/firmware/inventory-esp32/include/secrets.h` (git-ignored):
+   - set `DEVICE_TOKEN` to that token
+   - set `API_BASE_URL` to `https://<service>.onrender.com/api/v1`, Render directly rather than the Vercel site
+   - set the WiFi details
+3. Flash the station.
+4. On the Employees page, assign your RFID card. Tap a card on the station first, so its UID shows up under "Recently tapped cards nobody holds".
+
+The station uploads only during **live sessions**: 5 minutes after power-on, then 15 minutes per authorised card tap, at most 240 minutes a day. Between sessions it sends nothing, so Render and Neon go back to sleep and the free plans last the month. The lengths are optional Render variables:
+- `LIVE_SESSION_MINUTES`
+- `DEVICE_BOOT_SESSION_MINUTES`
+- `DEVICE_DAILY_LIVE_MINUTES`
+- `DEVICE_REPORT_INTERVAL_SECONDS`
+
+The defaults are in `app/core/config.py`. **Raising the daily limit far above 240 minutes can use up Neon's 100 compute-hours.**
+
+**Before a demo with the station:** tap a card about a minute early. The first request wakes Render, and the station shows `CHECKING CARD` until it answers.
+
+The Neon connection string belongs only in Render's `DATABASE_URL`. It never goes in the firmware, `secrets.h` or any committed file.
 
 ## 6. Verify the deployment
 

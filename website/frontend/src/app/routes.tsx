@@ -16,6 +16,11 @@ const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = 
   qr: () => import("@/pages/portal/LabelsPage"),
   settings: () => import("@/pages/portal/SettingsPage"),
   users: () => import("@/pages/portal/UsersPage"),
+  environment: () => import("@/pages/portal/EnvironmentPage"),
+  ph: () => import("@/pages/portal/PhPage"),
+  waste: () => import("@/pages/portal/WastePage"),
+  devices: () => import("@/pages/portal/DevicesPage"),
+  employees: () => import("@/pages/portal/EmployeesPage"),
 }
 
 function portalRoute(module: PortalModule): RouteObject {

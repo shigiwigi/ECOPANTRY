@@ -157,6 +157,12 @@ Implemented and tested:
   - session state machine; offline buffer; serial calibration saved in NVS
   - 19 host unit tests (`pio test -e native`)
 - [x] Wiring and cautions: `hardware/inventory-station/README.md`
+- [x] Portal pages:
+  - **Environment, pH (experimental warning) and Waste:** live tiles, live/paused/stale/no-data states, and Recharts history with range buttons and a text summary. They poll every 5 s while live and every 60 s otherwise.
+  - **Devices (admin):** register, show the token once, rotate, disable, stop live.
+  - **Employees:** card assignment from recently tapped UIDs, revoke, and the tap log. Inspectors get a read-only view.
+  - **Dashboard:** a real station panel replaces the "Sensors Live" card, which had no data behind it.
+- [x] Frontend tests: `src/features/sensors/sensors.test.tsx` (16 tests), and `e2e/fullstack/sensors.fullstack.ts`, where a real backend receives station uploads and card taps. Charts checked in light and dark screenshots.
 
 Not done yet:
 - [ ] Flash the firmware and run it against the API on the real station (local LAN first, then Render)
