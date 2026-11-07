@@ -114,7 +114,7 @@ No tables need creating by hand. The API runs the migrations itself.
 
 1. Sign up at <https://render.com> and connect GitHub. Give Render access to
    `shigiwigi/ECOPANTRY`.
-2. **New → Blueprint**. Pick `shigiwigi/ECOPANTRY`, branch `development`.
+2. **New → Blueprint**. Pick `shigiwigi/ECOPANTRY`, branch `main`.
    Render reads `render.yaml` and shows one service, `ecopantry-api`, plan **Free**.
 3. When it asks for `DATABASE_URL`, paste the Neon direct string from step 1.
 4. **Apply**. The first build takes a few minutes. In the service's **Logs**
@@ -130,12 +130,12 @@ No tables need creating by hand. The API runs the migrations itself.
 
 In `website/frontend/vercel.json`, replace `your-render-service.invalid` with
 the Render host from step 2 (host only, no `https://` and no path), then commit
-and push to `development`:
+and push to `main`:
 
 ```bash
 git add website/frontend/vercel.json
 git commit -m "Point Vercel API forward at the Render service"
-git push origin development
+git push origin main
 ```
 
 ### 4. Vercel website
@@ -148,11 +148,11 @@ git push origin development
    contain the app yet, so it may fail. That is expected. Go to
    **Settings → Environments → Production → Branch Tracking** (older
    dashboards: **Settings → Git → Production Branch**) and set it to
-   `development`.
+   `main`.
 5. **Settings → Build and Deployment → Node.js Version:** `24.x` (the version the
    build was tested with).
-6. **Deployments → Create Deployment** (or push any commit to `development`) to
-   build `development`. The site is at `https://<project>.vercel.app`.
+6. **Deployments → Create Deployment** (or push any commit to `main`) to
+   build `main`. The site is at `https://<project>.vercel.app`.
 
 ### 5. First administrator
 
@@ -258,10 +258,10 @@ Run these on the real URLs. Only tick what was actually checked.
 
 ## Updating the site
 
-Both services redeploy automatically on every push to `development`:
+Both services redeploy automatically on every push to `main`:
 
 ```bash
-git push origin development
+git push origin main
 ```
 
 - Render rebuilds the API, runs `alembic upgrade head` on start (new
@@ -296,7 +296,7 @@ Session housekeeping, run occasionally from your computer (same
 - Revoke the GitHub app access in GitHub → **Settings → Applications** if
   you no longer use Render or Vercel.
 
-Nothing here touches the local Podman database or the `development` branch.
+Nothing here touches the local Podman database.
 
 ## Known limitations
 
