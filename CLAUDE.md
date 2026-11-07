@@ -13,7 +13,7 @@ Implemented: the frontend foundation (`website/frontend/`, Milestone 1), the bac
 
 There are no inventory, batch or supplier tables yet. `waste-bin-esp32` and `esp32-cam` are still empty scaffolds. `docs/ROADMAP.md` has the milestone order (M0–M13, mapped to the README phases), dependencies and acceptance criteria; `docs/PROJECT_STATUS.md` is the checklist of what is implemented. Update both as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
 
-Deployment (`docs/DEPLOYMENT.md`): Vercel serves the frontend and forwards `/api/v1/*` to the API on Render (`website/frontend/vercel.json`), so production stays same-origin and needs no CORS; `render.yaml` runs `alembic upgrade head` on every start, so migrations reach production on push to `development`; the database is Neon. Never put the Neon URL or any other secret in these files.
+Deployment (`docs/DEPLOYMENT.md`): Vercel serves the frontend and forwards `/api/v1/*` to the API on Render (`website/frontend/vercel.json`), so production stays same-origin and needs no CORS; `render.yaml` runs `alembic upgrade head` on every start, so migrations reach production on push to `main`; the database is Neon. Never put the Neon URL or any other secret in these files.
 
 When adding a component, give it its own dependency file and setup instructions (README expects this), plus a `.env.example` with placeholders only.
 

@@ -12,7 +12,7 @@ services:
     plan: free
     # Neon project must be in the same place: AWS Asia Pacific (Singapore).
     region: singapore
-    branch: development
+    branch: main
     rootDir: website/backend
     buildCommand: pip install .
     # The free plan has no pre-deploy step or shell, so migrations run here.
