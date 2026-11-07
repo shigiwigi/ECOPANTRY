@@ -42,9 +42,8 @@ struct Message {
 } message;
 
 bool scanPending = false;
+char tappedUid[ecopantry::kUidTextSize] = "";
 uint32_t scanStartedMs = 0;
-uint8_t page = 0;
-uint32_t pageChangedMs = 0;
 uint32_t lastSampleMs = 0;
 uint32_t lastReportMs = 0;
 
@@ -72,28 +71,27 @@ const char* deniedReason(const char* result) {
 }
 
 void showScanResult(const uplink::ScanResult& r, uint32_t nowMs) {
+  // Line 1 is always the card's ID, line 2 the holder's name or why it wasn't accepted.
   switch (r.outcome) {
     case uplink::ScanOutcome::Granted:
-      showMessage("ACCESS GRANTED", r.live ? r.displayName : "DAILY LIMIT HIT", nowMs);
-      indicators.signal(Signal::Granted, nowMs, config::kMessageMs);
-      page = 3;  // then show the live status
-      pageChangedMs = nowMs + config::kMessageMs;
+      showMessage(tappedUid, r.displayName[0] ? r.displayName : "ACCESS GRANTED", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Granted, nowMs, config::kCardShownMs);
       break;
     case uplink::ScanOutcome::Denied:
-      showMessage("ACCESS DENIED", deniedReason(r.result), nowMs);
-      indicators.signal(Signal::Denied, nowMs, config::kMessageMs);
+      showMessage(tappedUid, deniedReason(r.result), nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Denied, nowMs, config::kCardShownMs);
       break;
     case uplink::ScanOutcome::Offline:
-      showMessage("OFFLINE", "CARD NOT CHECKED", nowMs);
-      indicators.signal(Signal::Problem, nowMs, config::kMessageMs);
+      showMessage(tappedUid, "NOT CHECKED:OFFL", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
       break;
     case uplink::ScanOutcome::Locked:
-      showMessage("DEVICE LOCKED", "CARD NOT CHECKED", nowMs);
-      indicators.signal(Signal::Problem, nowMs, config::kMessageMs);
+      showMessage(tappedUid, "DEVICE LOCKED", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
       break;
     case uplink::ScanOutcome::Error:
-      showMessage("SERVER ERROR", "TRY AGAIN", nowMs);
-      indicators.signal(Signal::Problem, nowMs, config::kMessageMs);
+      showMessage(tappedUid, "SERVER ERROR", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
       break;
   }
   Serial.printf("[card] %s %s\n", r.outcome == uplink::ScanOutcome::Granted ? "granted" : "not granted", r.result);
@@ -107,8 +105,8 @@ void handleCards(uint32_t nowMs) {
       showScanResult(result, nowMs);
     } else if (nowMs - scanStartedMs > config::kScanAnswerTimeoutMs) {
       scanPending = false;
-      showMessage("NO ANSWER", "TRY AGAIN", nowMs);
-      indicators.signal(Signal::Problem, nowMs, config::kMessageMs);
+      showMessage(tappedUid, "NO ANSWER", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
     }
     return;  // one card at a time
   }
@@ -119,7 +117,8 @@ void handleCards(uint32_t nowMs) {
   if (uplink::requestScan(uid)) {
     scanPending = true;
     scanStartedMs = nowMs;
-    showMessage("CHECKING CARD", uid, nowMs, config::kScanAnswerTimeoutMs);
+    strlcpy(tappedUid, uid, sizeof tappedUid);
+    showMessage(tappedUid, "CHECKING...", nowMs, config::kScanAnswerTimeoutMs);
   }
 }
 
@@ -147,36 +146,29 @@ void sampleForUpload(uint32_t nowMs, const uplink::Status& status) {
 
 // --- screen ------------------------------------------------------------------------
 
-void statusLines(const uplink::Status& s, uint32_t nowMs, char* line1, char* line2) {
-  (void)nowMs;
+// Second line of the home screen: is the station talking to the server?
+void connectionLine(const uplink::Status& s, char* line) {
   if (!s.configOk) {
-    strcpy(line1, "CONFIG ERROR");
-    strcpy(line2, "SEE SERIAL LOG");
+    strcpy(line, "CONFIG ERROR");
   } else if (s.state == ecopantry::SessionState::Locked) {
-    strcpy(line1, "DEVICE LOCKED");
-    strcpy(line2, "TOKEN REFUSED");
+    strcpy(line, "TOKEN REFUSED");
   } else if (!s.wifiConnected) {
-    strcpy(line1, "WIFI OFFLINE");
-    strcpy(line2, "RECONNECTING");
-  } else if (s.state == ecopantry::SessionState::Starting) {
-    strcpy(line1, "GOING LIVE...");
-    strcpy(line2, "CONTACTING API");
+    strcpy(line, "WIFI OFFLINE");
+  } else if (s.lastHttpCode == 0) {
+    strcpy(line, "CONNECTING...");
+  } else if (s.lastHttpCode < 0) {
+    strcpy(line, "SERVER OFFLINE");
+  } else if (s.lastHttpCode >= 500) {
+    strcpy(line, "SERVER ERROR");
   } else if (s.state == ecopantry::SessionState::Live) {
-    const uint32_t seconds = s.remainingMs / 1000;
-    char text[32];  // roomy, then cut to the LCD width
-    snprintf(text, sizeof text, "LIVE %2lu:%02lu LEFT", static_cast<unsigned long>(seconds / 60),
-             static_cast<unsigned long>(seconds % 60));
-    strlcpy(line1, text, 17);
-    strcpy(line2, s.lastHttpCode == 201 || s.lastHttpCode == 200 ? "UPLOADING" : "API RETRYING");
-  } else if (s.budgetExhausted) {
-    strcpy(line1, "DAILY LIMIT HIT");
-    strcpy(line2, "UPLOADS PAUSED");
+    strcpy(line, "ONLINE - LIVE");
   } else {
-    strcpy(line1, "UPLOAD PAUSED");
-    strcpy(line2, "TAP CARD:GO LIVE");
+    strcpy(line, "ONLINE");
   }
 }
 
+// Always on screen: temperature, humidity and the connection. A card tap replaces it for
+// a few seconds with the card's ID and the holder's name, then it comes back.
 void updateScreen(uint32_t nowMs, const uplink::Status& status) {
   if (message.active) {
     if (static_cast<int32_t>(nowMs - message.untilMs) < 0) {
@@ -184,45 +176,15 @@ void updateScreen(uint32_t nowMs, const uplink::Status& status) {
       return;
     }
     message.active = false;
-    pageChangedMs = nowMs;
-  }
-
-  if (static_cast<int32_t>(nowMs - pageChangedMs) >= static_cast<int32_t>(config::kLcdPageMs)) {
-    page = (page + 1) % 4;
-    pageChangedMs = nowMs;
   }
 
   char line1[17], line2[17];
-  switch (page) {
-    case 0:
-      if (climate.ok(nowMs)) {
-        snprintf(line1, sizeof line1, "TEMP: %.1f C", climate.temperatureC());
-        snprintf(line2, sizeof line2, "HUMIDITY: %.0f%%", climate.humidityPct());
-      } else {
-        strcpy(line1, "DHT11 ERROR");
-        strcpy(line2, "CHECK WIRING");
-      }
-      break;
-    case 1:
-      strcpy(line1, "WASTE BIN");
-      if (loadCell.ok()) {
-        snprintf(line2, sizeof line2, "%.1f g", loadCell.grams());
-      } else {
-        strcpy(line2, loadCell.available() ? "READING..." : "SENSOR ERROR");
-      }
-      break;
-    case 2:
-      strcpy(line1, "pH (EXPERIMENT)");
-      if (phProbe.hasValue()) {
-        snprintf(line2, sizeof line2, "pH %.2f  %.2fV", phProbe.ph(), phProbe.voltage());
-      } else {
-        strcpy(line2, "READING...");
-      }
-      break;
-    default:
-      statusLines(status, nowMs, line1, line2);
-      break;
+  if (climate.ok(nowMs)) {
+    snprintf(line1, sizeof line1, "T:%.1fC  H:%.0f%%", climate.temperatureC(), climate.humidityPct());
+  } else {
+    strcpy(line1, "DHT11 ERROR");
   }
+  connectionLine(status, line2);
   display.show(line1, line2);
 }
 
@@ -263,6 +225,7 @@ void printStatus(uint32_t nowMs) {
                 static_cast<unsigned long>(s.reportIntervalMs / 1000));
   Serial.printf("uploads ok %lu, failed %lu, buffered %u, last HTTP %d\n", static_cast<unsigned long>(s.uploadsOk),
                 static_cast<unsigned long>(s.uploadsFailed), static_cast<unsigned>(s.buffered), s.lastHttpCode);
+  Serial.printf("rfid reader 0x%02X (%s)\n", cardReader.version(), cardReader.healthy() ? "ok" : "NOT ANSWERING");
   Serial.printf("temperature %.1f C, humidity %.0f %% (%s)\n", climate.temperatureC(), climate.humidityPct(),
                 climate.ok(nowMs) ? "ok" : "DHT11 error");
   Serial.printf("bin weight %.1f g (%s), factor %.4f\n", loadCell.grams(),
@@ -387,6 +350,10 @@ void setup() {
   climate.begin();
   phProbe.begin(calibration.ph);
   cardReader.begin();
+  if (!cardReader.healthy()) {
+    display.show("RFID READER", "NOT ANSWERING");
+    delay(2500);
+  }
 
   display.show("TARING LOAD CELL", "KEEP BIN EMPTY");
   delay(1500);
@@ -396,7 +363,6 @@ void setup() {
 
   uplink::start();
   printHelp();
-  pageChangedMs = millis();
 }
 
 void loop() {

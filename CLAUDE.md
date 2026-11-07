@@ -85,7 +85,7 @@ There is no default account. Never add one, and never accept passwords as CLI ar
 - shadcn/ui (radix base, "nova" style). Components import `cn` from `@/lib/utils`, which re-exports the `cn` package (shadcn's clsx + tailwind-merge replacement). Only components actually used are installed. Remove unused ones rather than keeping them around.
 - QR: `src/features/qr/`. The label payload is `ECOPANTRY:BATCH:<code>` and nothing else (rules shared with `app/services/batch_labels.py`). The camera only starts from a user action and every track must be stopped on stop, read, unmount, hidden tab and unplug (`useQrScanner.ts`). Printed labels render through `PrintSheet` into `<body>`; `.print-sheet` in `globals.css` hides the rest of the page when printing. Labels use `--label-ink`/`--label-paper` (black on white in both themes). The camera needs HTTPS or localhost; `DEV_HTTPS=true` serves the dev server over HTTPS for phone testing.
 - Recharts is installed (sensor history charts, `src/features/sensors/HistoryChart.tsx`). Series colours are `var(--chart-N)` (the :root/.dark tokens; `--color-*` names exist only inside Tailwind utilities with `@theme inline`), never hex.
-- Sensor pages (Environment, pH, Waste) share `src/features/sensors/SensorPage.tsx` and poll `GET /sensors/stations` (5 s while a station is live, 60 s otherwise). A paused station is normal (live sessions, `docs/HARDWARE_INTEGRATION.md`); show it as paused, not as an error.
+- Sensor pages (Environment, pH, Waste) share `src/features/sensors/SensorPage.tsx` and poll `GET /sensors/stations` (2 s while a station is live, 60 s otherwise). A paused station is normal (live sessions, `docs/HARDWARE_INTEGRATION.md`); show it as paused, not as an error.
 
 ## Planned architecture
 

@@ -64,7 +64,7 @@ export interface History {
   points: HistoryPoint[]
 }
 
-export const LIVE_POLL_MS = 5_000
+export const LIVE_POLL_MS = 2_000
 export const IDLE_POLL_MS = 60_000
 
 export const stationsQuery = queryOptions({

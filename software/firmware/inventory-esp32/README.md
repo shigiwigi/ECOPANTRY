@@ -112,13 +112,13 @@ The pH value is labelled experimental on the LCD, in the API and in the portal. 
 
 ## LCD and lights
 
-The LCD rotates through four pages every 2.5 s:
-- temperature and humidity
-- waste-bin weight
-- pH (experimental)
-- live status
+The LCD shows one home screen all the time:
+- line 1: temperature and humidity (`T:30.5C  H:58%`)
+- line 2: the connection (`ONLINE`, `ONLINE - LIVE`, `WIFI OFFLINE`, `SERVER OFFLINE`, `TOKEN REFUSED`, `CONFIG ERROR`)
 
-A card tap shows `CHECKING CARD` and then the result. The result can be `ACCESS GRANTED` with the holder's name, or `ACCESS DENIED` with a reason (`UNKNOWN CARD`, `CARD REVOKED`, `ACCOUNT INACTIVE`). When the server can't be reached it shows `OFFLINE` / `CARD NOT CHECKED`. Cards are checked by the server only; there is no local list of allowed cards.
+When a card is tapped, the screen shows the card's ID and then the holder's name for about 3.5 s (or `UNKNOWN CARD`, `CARD REVOKED`, `ACCOUNT INACTIVE`, `NOT CHECKED:OFFL`), then returns to the home screen. Cards are checked by the server only; there is no local list of allowed cards.
+
+Bin weight and pH aren't on the LCD. They're in the serial `status` output and on the portal's Waste and pH pages.
 
 | Lights | Meaning |
 |---|---|
