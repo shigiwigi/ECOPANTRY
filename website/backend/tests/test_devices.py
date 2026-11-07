@@ -195,7 +195,7 @@ def test_power_on_opens_a_short_session(station: TestClient, token: str) -> None
     assert status["live"] is True
     assert 290 <= status["live_seconds_remaining"] <= 300  # DEVICE_BOOT_SESSION_MINUTES = 5
     assert status["budget_exhausted"] is False
-    assert status["report_interval_seconds"] == 10
+    assert status["report_interval_seconds"] == 3
 
 
 def test_a_reboot_during_a_session_does_not_extend_it(
@@ -276,7 +276,7 @@ def test_uploads_faster_than_the_interval_are_refused(station: TestClient, token
 
     assert response.status_code == 429
     assert response.json()["code"] == "upload_too_soon"
-    assert response.headers["retry-after"] == "5"
+    assert response.headers["retry-after"] == "2"
 
 
 def test_a_backlog_keeps_its_timing_and_drops_hour_old_samples(station: TestClient, token: str, db: Session) -> None:

@@ -32,12 +32,12 @@ void Indicators::update(uint32_t nowMs) {
     const uint32_t t = nowMs - signalStartMs_;
     switch (signal_) {
       case Signal::Granted:
-        green = true;
-        beep = t < 80;
+        green = true;               // solid green for the whole message, one short beep
+        beep = t < 150;
         break;
       case Signal::Denied:
-        red = true;
-        beep = t < 200 || (t >= 350 && t < 550);
+        red = (t / 150) % 2 == 0;   // red flashes about 3 times a second
+        beep = (t % 500) < 250 && t < 2000;  // four beeps, then quiet
         break;
       case Signal::Problem:
         red = true;

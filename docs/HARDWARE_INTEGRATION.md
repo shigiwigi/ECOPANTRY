@@ -10,12 +10,12 @@ How the single-ESP32 inventory station reaches the portal, and how it avoids kee
 ```
 ESP32 station ──HTTPS + Bearer device token──▶ FastAPI (Render) ──▶ PostgreSQL (Neon)
                                                      ▲
-Portal (Vercel) ──same-origin /api/v1, staff session─┘   polls every 5 s while a page is open
+Portal (Vercel) ──same-origin /api/v1, staff session─┘   polls every 2 s while a page is open
 ```
 
 - **The station never connects to the database.** The Neon URL is a backend secret only (`DATABASE_URL` on Render). It must never appear in firmware, `secrets.h` or committed files.
 - **The station calls Render directly** (`https://<service>.onrender.com/api/v1`), not through Vercel. It is not a browser, so it needs no CORS and no cookies.
-- **Real time in the portal is polling**, not websockets or server-sent events. TanStack Query refetches every 5 s and stops while the tab is hidden. Vercel rewrites and Render's free tier don't hold long-lived streams reliably, and readings only arrive every 10 s anyway.
+- **Real time in the portal is polling**, not websockets or server-sent events. TanStack Query refetches every 2 s and stops while the tab is hidden. Vercel rewrites and Render's free tier don't hold long-lived streams reliably, and readings only arrive every 3 s anyway.
 
 ## Device authentication
 
@@ -40,9 +40,9 @@ Portal (Vercel) ──same-origin /api/v1, staff session─┘   polls every 5 s
 |---|---|---|
 | Station powers on | `POST /device/session` | Opens a session of `DEVICE_BOOT_SESSION_MINUTES` (5), unless already live for longer. A reboot never extends a session. |
 | Authorised card tapped | `POST /device/rfid-scans` | Opens the session, or extends it to `now + LIVE_SESSION_MINUTES` (15). Taps don't stack. |
-| While live | `POST /device/readings` every `DEVICE_REPORT_INTERVAL_SECONDS` (10) | Stored, answered 201 with the time left |
+| While live | `POST /device/readings` every `DEVICE_REPORT_INTERVAL_SECONDS` (3) | Stored, answered 201 with the time left |
 | Outside a session | `POST /device/readings` | **409 `session_not_live`**, nothing stored; the station pauses |
-| Too fast | `POST /device/readings` within `DEVICE_MIN_REPORT_INTERVAL_SECONDS` (5) | **429 `upload_too_soon`** with `Retry-After` |
+| Too fast | `POST /device/readings` within `DEVICE_MIN_REPORT_INTERVAL_SECONDS` (2) | **429 `upload_too_soon`** with `Retry-After` |
 | Administrator clicks Stop | `POST /devices/{id}/stop-live` | Session ends now; the station pauses on its next upload |
 
 **Three layers, each enough on its own:**

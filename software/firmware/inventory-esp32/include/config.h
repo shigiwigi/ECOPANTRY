@@ -42,14 +42,14 @@ constexpr uint32_t kDhtStaleMs = 3 * kDhtIntervalMs;
 constexpr uint32_t kPhSampleSpacingMs = 2;       // 30 samples, 2 ms apart, like the sketch
 constexpr uint8_t kPhSamples = 30;
 constexpr uint32_t kPhIntervalMs = 1000;
-constexpr uint32_t kLcdPageMs = 2500;
+constexpr uint32_t kCardShownMs = 3500;  // how long a card's ID and name stay on the LCD
 constexpr uint32_t kMessageMs = 2500;
 constexpr uint32_t kSerialReportMs = 5000;
 constexpr uint32_t kSameCardIgnoreMs = 3000;     // one tap, one request
 constexpr uint32_t kScanAnswerTimeoutMs = 20000; // Render can take ~a minute to wake; the LCD gives up sooner
 
 // Uploads. The server sends the real interval in every answer (DEVICE_REPORT_INTERVAL_SECONDS).
-constexpr uint32_t kDefaultReportIntervalMs = 10000;
+constexpr uint32_t kDefaultReportIntervalMs = 3000;
 constexpr uint32_t kHttpTimeoutMs = 15000;
 constexpr uint32_t kMaxSessionMs = 60UL * 60UL * 1000UL;  // local cap, whatever the server says
 constexpr uint32_t kRetryMinMs = 5000;
