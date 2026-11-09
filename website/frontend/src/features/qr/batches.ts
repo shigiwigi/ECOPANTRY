@@ -3,13 +3,14 @@
  * backend's `batches.view` permission. Portal-only; never import this from
  * public pages.
  *
- * Until batch records exist (inventory module, M6) the backend answers 501
- * `batch_lookup_unavailable`. `BatchLabelLookup` is the agreed response for
- * when they do (docs/QR_LABELS.md).
+ * Answers 404 `batch_not_found` for an unknown code. `BatchLabelLookup` is the
+ * response contract in docs/QR_LABELS.md. Lookups only read.
  */
 import { ApiError, apiRequest } from "@/lib/api/client"
 
 export interface BatchLabelLookup {
+  /** The batch's id, for opening it in the Batches page. */
+  batch_id?: string
   code: string
   ingredient_name: string
   /** ISO dates (YYYY-MM-DD). */

@@ -1,10 +1,10 @@
 # QR labels and scanning
 
-Status 2026-11-02: label generation, printing, camera scanning and manual
-entry work. **Batch lookup does not**, because batch records don't exist yet
-(inventory module, M6). The lookup endpoint is in place and protected, and
-answers `501 batch_lookup_unavailable` until then. Nothing here creates or
-changes inventory data.
+Status 2026-11-09: label generation, printing, camera scanning, manual entry
+and **batch lookup** work (inventory module, M6). Labels are made from batch
+records (Labels page picker, or "Print label" in a batch's detail), and a scan
+opens the batch in the Batches page. Scanning never creates or changes
+inventory data; only the consume and adjust endpoints change stock.
 
 ## What a label carries
 
@@ -76,7 +76,7 @@ generated from batch records (below), that endpoint must require
 Camera permission is a browser permission for the camera only. It grants no
 EcoPantry access: lookups still need a session and the right permission.
 
-## Endpoint today
+## Endpoint
 
 `GET /api/v1/batches/by-label/{code}`, session required, `batches.view`.
 
@@ -85,11 +85,12 @@ EcoPantry access: lookups still need a session and the right permission.
 | `401 not_authenticated` / `session_*` | No session, expired, or ended |
 | `403 forbidden` | Role lacks `batches.view` |
 | `422 validation_error` | `code` isn't in the format above |
-| `501 batch_lookup_unavailable` | Valid request; batch records don't exist yet |
+| `404 batch_not_found` | Valid code, but no batch has it |
+| `200` | The batch (shape below) |
 
 GET only, so no CSRF token. The code is never echoed back in errors.
 
-## Contract for M6 (to implement with batch records)
+## Lookup response (implemented in M6)
 
 1. `batches.label_code`: `CHAR(10)`, unique, not null, assigned by the
    backend when a batch is created (random from the alphabet above, retried
