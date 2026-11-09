@@ -169,7 +169,7 @@ describe("staff sign-in against the API", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Sign out" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("you're still signed in")
-    expect(screen.getByRole("heading", { name: /Welcome back/, level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Dashboard", level: 1 })).toBeInTheDocument()
   })
 
   it("returns to sign-in with a notice when the server ends the session", async () => {

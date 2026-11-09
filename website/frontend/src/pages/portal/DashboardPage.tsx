@@ -12,6 +12,7 @@ import {
 import { useAuth } from "@/features/auth/auth-context"
 import { ROLE_LABELS } from "@/features/auth/roles"
 import { StationSummary } from "@/features/sensors/StationSummary"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
@@ -19,32 +20,32 @@ export default function DashboardPage() {
   const role = user?.role ?? "storekeeper"
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
-      {/* Welcome Banner */}
-      <div className="rounded-xl border bg-card p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary uppercase tracking-wider mb-2">
-            {ROLE_LABELS[role]} Dashboard
-          </span>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Welcome back, {user?.name || user?.email || "Staff Member"}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+    <div className="space-y-6">
+      <PageHeader
+        title="Dashboard"
+        documentTitle="Dashboard"
+        description={
+          <>
+            <span className="font-medium text-foreground">
+              Welcome back, {user?.name || user?.email || "Staff Member"}
+            </span>{" "}
+            ({ROLE_LABELS[role]}).{" "}
             {role === "admin" && "Full administrative control over users, inventory, hardware, and safety records."}
             {role === "storekeeper" && "Pantry stock monitoring, batch lookups, and ingredient intake management."}
             {role === "inspector" && "Food safety compliance, cold chain logs, and expiration tracking."}
-          </p>
-        </div>
-
-        {role === "admin" && (
-          <Button asChild className="gap-2 shrink-0">
-            <Link to="/portal/users">
-              <Users className="size-4" />
-              Manage Users
-            </Link>
-          </Button>
-        )}
-      </div>
+          </>
+        }
+        actions={
+          role === "admin" ? (
+            <Button asChild className="gap-2">
+              <Link to="/portal/users">
+                <Users className="size-4" />
+                Manage Users
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Real readings from the inventory station, for every role */}
       <StationSummary />
