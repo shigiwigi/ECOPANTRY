@@ -28,7 +28,7 @@ export default function EnvironmentPage() {
     <SensorPage
       moduleId="environment"
       metrics={METRICS}
-      footnote="DHT11 sensor: about ±2 °C and ±5 % relative humidity. Thresholds and alerts for these readings aren't built yet."
+      footnote="DHT11 sensor: about ±2 °C and ±5 % relative humidity."
     />
   )
 }

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { NativeSelect } from "@/components/ui/native-select"
 import { getModule } from "@/config/portal-modules"
+import { thresholdsQuery, describeThreshold, METRIC_LABELS, type Threshold } from "@/features/alerts/api"
 import { useAuth } from "@/features/auth/auth-context"
 import { ApiError } from "@/lib/api/client"
 import { useNow } from "@/lib/use-now"
@@ -66,6 +67,9 @@ function loadError(error: unknown): string {
 
 function StationReadings({ metrics }: { metrics: MetricSpec[] }) {
   const stations = useQuery(stationsQuery)
+  // Alert limits are a nicety here: if they can't be loaded, the readings still show.
+  const loadedThresholds = useQuery(thresholdsQuery).data
+  const thresholds = Array.isArray(loadedThresholds) ? loadedThresholds : []
   const { user } = useAuth()
   const now = useNow()
   const [chosenId, setChosenId] = useState<string | null>(null)
@@ -124,6 +128,8 @@ function StationReadings({ metrics }: { metrics: MetricSpec[] }) {
         ))}
       </div>
 
+      <ThresholdNote thresholds={limitsFor(thresholds, metrics, station)} />
+
       <div className="grid gap-4 xl:grid-cols-2">
         {metrics.map((spec) => (
           <HistoryChart
@@ -135,6 +141,7 @@ function StationReadings({ metrics }: { metrics: MetricSpec[] }) {
             decimals={spec.decimals}
             color={spec.color}
             live={station.live}
+            references={chartReferences(limitsFor(thresholds, [spec], station), spec)}
           />
         ))}
       </div>
@@ -154,4 +161,37 @@ function tileProps(spec: MetricSpec, station: Station) {
     muted: state !== "live",
     note: reading && state !== "live" ? `Last reading at ${formatClock(reading.recorded_at)}` : undefined,
   }
+}
+
+/** Enabled thresholds for these metrics that apply to this station. */
+function limitsFor(thresholds: Threshold[], metrics: MetricSpec[], station: Station): Threshold[] {
+  return thresholds.filter(
+    (t) => t.enabled && metrics.some((spec) => spec.metric === t.metric) && (t.device_id === null || t.device_id === station.id),
+  )
+}
+
+/** Limits are stored in the chart's unit (grams for weight), so they line up with the series. */
+function chartReferences(thresholds: Threshold[], spec: MetricSpec) {
+  return thresholds.flatMap((t) => {
+    const value = t.max_value ?? t.min_value
+    if (value === null) return []
+    const label = t.metric === "weight_g" ? `${t.label}: ${(value / 1000).toFixed(2)} kg` : `${t.label}: ${value} ${spec.unit}`
+    return [{ value, label }]
+  })
+}
+
+function ThresholdNote({ thresholds }: { thresholds: Threshold[] }) {
+  if (thresholds.length === 0) return null
+  return (
+    <p className="text-sm text-muted-foreground">
+      Alert limits:{" "}
+      {thresholds.map((t, index) => (
+        <span key={t.id}>
+          {index > 0 && "; "}
+          {METRIC_LABELS[t.metric].toLowerCase()} {describeThreshold(t)}
+        </span>
+      ))}
+      .
+    </p>
+  )
 }
