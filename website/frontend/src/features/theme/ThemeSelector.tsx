@@ -30,7 +30,7 @@ export function ThemeSelector({ variant = "full" }: ThemeSelectorProps) {
           <label
             key={value}
             className={cn(
-              "flex cursor-pointer items-center justify-center rounded-lg border bg-card text-sm transition-colors",
+              "relative flex cursor-pointer items-center justify-center rounded-lg border bg-card text-sm transition-colors",
               compact ? "min-h-11 gap-1.5 px-2" : "flex-col gap-1.5 px-3 py-3",
               "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
               preference === value
