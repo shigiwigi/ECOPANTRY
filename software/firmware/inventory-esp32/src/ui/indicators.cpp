@@ -47,6 +47,16 @@ void Indicators::update(uint32_t nowMs) {
     green = nowMs % 3000 < 100;
   } else if (ambient_ == Ambient::Locked) {
     red = nowMs % 2000 < 150;
+  } else if (ambient_ == Ambient::Setup) {
+    green = nowMs % 1000 < 150;
+    red = nowMs % 1000 >= 500 && nowMs % 1000 < 650;
+  }
+
+  // The bin warning keeps the red LED blinking whatever else is going on (a card result
+  // still wins for its few seconds).
+  if (binFull_ && !signalling_) red = red || (nowMs % 500) < 250;
+  if (beeping_) {
+    if (nowMs - beepStartMs_ < 200) beep = true; else beeping_ = false;
   }
 
   digitalWrite(config::kGreenLedPin, green ? HIGH : LOW);

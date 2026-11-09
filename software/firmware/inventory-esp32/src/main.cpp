@@ -4,12 +4,16 @@
 //
 // Readings go to the API only during a live session. When the session ends the station
 // keeps measuring and showing values locally but sends nothing until an authorised card
-// is tapped. Setup and calibration: README.md.
+// is tapped. The WiFi and API details are entered on the station's own setup hotspot
+// (src/net/setup_portal.cpp), not compiled in. A local "bin nearly full" warning works even
+// offline. Setup and calibration: README.md.
 
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include "bin_alert.h"
 #include "config.h"
+#include "hold_button.h"
 #include "net/uplink.h"
 #include "ph.h"
 #include "rfid_reader.h"
@@ -32,6 +36,9 @@ PhProbe phProbe;
 RfidReader cardReader;
 Display display;
 Indicators indicators;
+ecopantry::BinAlert binAlert(config::kBinFullGrams, config::kBinClearGrams, config::kBinConfirmMs,
+                           config::kBinBeepGapMs);
+ecopantry::HoldButton bootButton(config::kBootHoldMs);
 
 // A message (card result, calibration) replaces the rotating pages for a few seconds.
 struct Message {
@@ -85,8 +92,12 @@ void showScanResult(const uplink::ScanResult& r, uint32_t nowMs) {
       showMessage(tappedUid, "NOT CHECKED:OFFL", nowMs, config::kCardShownMs);
       indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
       break;
+    case uplink::ScanOutcome::Setup:
+      showMessage(tappedUid, "SETUP OPEN", nowMs, config::kCardShownMs);
+      indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
+      break;
     case uplink::ScanOutcome::Locked:
-      showMessage(tappedUid, "DEVICE LOCKED", nowMs, config::kCardShownMs);
+      showMessage(tappedUid, "TOKEN REFUSED", nowMs, config::kCardShownMs);
       indicators.signal(Signal::Problem, nowMs, config::kCardShownMs);
       break;
     case uplink::ScanOutcome::Error:
@@ -144,16 +155,39 @@ void sampleForUpload(uint32_t nowMs, const uplink::Status& status) {
   uplink::addReading(r);
 }
 
+// --- local alarms and the BOOT button ---------------------------------------------------
+
+// Works offline and outside live sessions: it only looks at the station's own load cell.
+void handleBinAlert(uint32_t nowMs) {
+  const auto change = binAlert.update(loadCell.ok(), loadCell.grams(), nowMs);
+  if (change == ecopantry::BinAlert::Change::BecameFull) {
+    Serial.printf("[bin] nearly full: %.1f kg\n", loadCell.grams() / 1000.0f);
+  } else if (change == ecopantry::BinAlert::Change::Cleared) {
+    Serial.println("[bin] emptied: warning cleared");
+  }
+  if (binAlert.takeBeep(nowMs)) indicators.beepOnce(nowMs);
+}
+
+// Held 5 s while running: forget the WiFi and open the setup hotspot. (Held while powering
+// on or pressing EN, the same button puts the ESP32 in flashing mode instead.)
+void handleBootButton(uint32_t nowMs) {
+  if (!bootButton.update(digitalRead(config::kBootButtonPin) == LOW, nowMs)) return;
+  uplink::forgetWifi();
+  showMessage("WIFI FORGOTTEN", "SETUP STARTING", nowMs);
+  indicators.signal(Signal::Granted, nowMs, config::kMessageMs);
+  Serial.println("[setup] BOOT held: forgetting the WiFi details and opening the setup hotspot.");
+}
+
 // --- screen ------------------------------------------------------------------------
 
 // Second line of the home screen: is the station talking to the server?
 void connectionLine(const uplink::Status& s, char* line) {
-  if (!s.configOk) {
-    strcpy(line, "CONFIG ERROR");
-  } else if (s.state == ecopantry::SessionState::Locked) {
+  if (s.state == ecopantry::SessionState::Locked) {
     strcpy(line, "TOKEN REFUSED");
+  } else if (s.hotspotOpen || !s.haveSettings) {
+    strcpy(line, s.hotspotOpen ? ecopantry::hotspotReasonLcd(s.hotspotReason) : "NOT SET UP");
   } else if (!s.wifiConnected) {
-    strcpy(line, "WIFI OFFLINE");
+    strcpy(line, s.joining ? "CONNECTING..." : "WIFI OFFLINE");
   } else if (s.lastHttpCode == 0) {
     strcpy(line, "CONNECTING...");
   } else if (s.lastHttpCode < 0) {
@@ -167,9 +201,49 @@ void connectionLine(const uplink::Status& s, char* line) {
   }
 }
 
-// Always on screen: temperature, humidity and the connection. A card tap replaces it for
-// a few seconds with the card's ID and the holder's name, then it comes back.
+// The screen rotates through pages every kScreenPageMs. The home page (temperature, humidity
+// and the connection or token problem) is always one of them, and "BIN NEARLY FULL" and the
+// setup instructions are added while they apply, so no critical state is ever hidden.
+enum class Page : uint8_t { Home, SetupName, SetupPassword, SetupAddress, Connecting, BinFull };
+
+void showPage(Page page, uint32_t nowMs, const uplink::Status& status) {
+  char line1[17], line2[17];
+  switch (page) {
+    case Page::SetupName:
+      strlcpy(line1, ecopantry::hotspotReasonLcd(status.hotspotReason), sizeof line1);
+      strlcpy(line2, status.hotspotName, sizeof line2);
+      break;
+    case Page::SetupPassword:
+      strcpy(line1, "HOTSPOT PASSWORD");
+      strlcpy(line2, status.hotspotPassword, sizeof line2);
+      break;
+    case Page::SetupAddress:
+      strcpy(line1, "OPEN IN BROWSER:");
+      strcpy(line2, "192.168.4.1");
+      break;
+    case Page::Connecting:
+      strcpy(line1, "CONNECTING TO:");
+      strlcpy(line2, status.ssid, sizeof line2);
+      break;
+    case Page::BinFull:
+      strcpy(line1, "BIN NEARLY FULL");
+      snprintf(line2, sizeof line2, "%.1f KG - EMPTY IT", loadCell.grams() / 1000.0f);
+      break;
+    case Page::Home:
+    default:
+      if (climate.ok(nowMs)) {
+        snprintf(line1, sizeof line1, "T:%.1fC  H:%.0f%%", climate.temperatureC(), climate.humidityPct());
+      } else {
+        strcpy(line1, "DHT11 ERROR");
+      }
+      connectionLine(status, line2);
+      break;
+  }
+  display.show(line1, line2);
+}
+
 void updateScreen(uint32_t nowMs, const uplink::Status& status) {
+  // A card tap or calibration message replaces the pages for a few seconds.
   if (message.active) {
     if (static_cast<int32_t>(nowMs - message.untilMs) < 0) {
       display.show(message.line1, message.line2);
@@ -178,24 +252,37 @@ void updateScreen(uint32_t nowMs, const uplink::Status& status) {
     message.active = false;
   }
 
-  char line1[17], line2[17];
-  if (climate.ok(nowMs)) {
-    snprintf(line1, sizeof line1, "T:%.1fC  H:%.0f%%", climate.temperatureC(), climate.humidityPct());
-  } else {
-    strcpy(line1, "DHT11 ERROR");
+  // A button hold in progress is shown at once, so the person knows it is being counted.
+  if (bootButton.heldMs(nowMs) > 500) {
+    display.show("KEEP HOLDING...", "TO RESET WIFI");
+    return;
   }
-  connectionLine(status, line2);
-  display.show(line1, line2);
+
+  Page pages[6];
+  size_t count = 0;
+  if (status.hotspotOpen) {
+    pages[count++] = Page::SetupName;
+    pages[count++] = Page::SetupPassword;
+    pages[count++] = Page::SetupAddress;
+  } else if (status.joining) {
+    pages[count++] = Page::Connecting;
+  }
+  pages[count++] = Page::Home;
+  if (binAlert.full()) pages[count++] = Page::BinFull;
+  showPage(pages[(nowMs / config::kScreenPageMs) % count], nowMs, status);
 }
 
 void updateIndicators(uint32_t nowMs, const uplink::Status& status) {
-  if (!status.configOk || status.state == ecopantry::SessionState::Locked) {
+  if (status.hotspotOpen) {
+    indicators.setAmbient(Ambient::Setup);
+  } else if (status.state == ecopantry::SessionState::Locked) {
     indicators.setAmbient(Ambient::Locked);
   } else if (status.state == ecopantry::SessionState::Live) {
     indicators.setAmbient(Ambient::Live);
   } else {
     indicators.setAmbient(Ambient::Off);
   }
+  indicators.setBinFull(binAlert.full());
   indicators.update(nowMs);
 }
 
@@ -210,16 +297,26 @@ void printHelp() {
   Serial.println(F("  ph reset          back to the default pH calibration"));
   Serial.println(F("  cal reset         forget all saved calibration"));
   Serial.println(F("  session           ask the API for a short live session (counts against the daily limit)"));
+  Serial.println(F("  setup             open the setup hotspot (nothing is forgotten)"));
+  Serial.println(F("  wifi reset        forget the WiFi name and password, open the setup hotspot"));
+  Serial.println(F("  factory reset     erase ALL saved settings and calibration, then restart"));
 }
 
 void printStatus(uint32_t nowMs) {
   const uplink::Status s = uplink::status();
   const ecopantry::PhCalibration& ph = phProbe.calibration();
   Serial.printf("firmware %s, uptime %lu s\n", FIRMWARE_VERSION, static_cast<unsigned long>(nowMs / 1000));
-  if (!s.configOk) Serial.printf("config error: %s\n", uplink::configProblem());
+  char saved[160];
+  uplink::describeSettings(saved, sizeof saved);
+  Serial.printf("settings: %s, WiFi network \"%s\"\n", saved, s.ssid[0] ? s.ssid : "(none)");
   Serial.printf("wifi %s", s.wifiConnected ? "connected" : "offline");
   if (s.wifiConnected) Serial.printf(" (%s, RSSI %d dBm)", WiFi.localIP().toString().c_str(), WiFi.RSSI());
   Serial.println();
+  if (s.hotspotOpen) {
+    Serial.printf("setup hotspot OPEN (%s): %s, password %s, http://192.168.4.1\n",
+                  ecopantry::hotspotReasonName(s.hotspotReason), s.hotspotName, s.hotspotPassword);
+  }
+  Serial.printf("bin %s\n", binAlert.full() ? "NEARLY FULL" : "ok");
   Serial.printf("session %s, %lu s left%s, report every %lu s\n", ecopantry::sessionStateName(s.state),
                 static_cast<unsigned long>(s.remainingMs / 1000), s.budgetExhausted ? ", daily limit reached" : "",
                 static_cast<unsigned long>(s.reportIntervalMs / 1000));
@@ -298,6 +395,17 @@ void runCommand(char* line, uint32_t nowMs) {
     } else {
       phCalibrationPoint(value, nowMs);
     }
+  } else if (strcmp(line, "setup") == 0) {
+    uplink::openSetup();
+    Serial.println(F("Opening the setup hotspot (uploads pause while it is open)."));
+  } else if (strcmp(line, "wifi reset") == 0) {
+    uplink::forgetWifi();
+    showMessage("WIFI FORGOTTEN", "SETUP STARTING", nowMs);
+    Serial.println(F("Forgetting the WiFi name and password; the API address and token stay saved."));
+  } else if (strcmp(line, "factory reset") == 0) {
+    Serial.println(F("Erasing ALL saved settings and calibration, then restarting."));
+    display.show("FACTORY RESET", "RESTARTING...");
+    uplink::factoryReset();
   } else if (strcmp(line, "session") == 0) {
     uplink::restartSession();
     Serial.println(F("Asking the API for a live session..."));
@@ -342,6 +450,7 @@ void setup() {
   Serial.println();
   Serial.printf("EcoPantry inventory station, firmware %s\n", FIRMWARE_VERSION);
 
+  pinMode(config::kBootButtonPin, INPUT_PULLUP);
   indicators.begin();
   display.begin();
   display.show("ECOPANTRY", "STARTING " FIRMWARE_VERSION);
@@ -374,6 +483,8 @@ void loop() {
   phProbe.update(now);
   handleSerial(now);
   handleCards(now);
+  handleBootButton(now);
+  handleBinAlert(now);
   sampleForUpload(now, status);
   updateScreen(now, status);
   updateIndicators(now, status);

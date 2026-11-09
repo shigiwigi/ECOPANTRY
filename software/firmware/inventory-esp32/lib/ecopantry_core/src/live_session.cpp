@@ -39,6 +39,13 @@ void LiveSession::onUnauthorized() {
   durationMs_ = 0;
 }
 
+void LiveSession::onTokenSaved() {
+  if (state_ != SessionState::Locked) return;
+  state_ = SessionState::Starting;
+  bootAttempts_ = 0;
+  budgetExhausted_ = false;
+}
+
 void LiveSession::onBootAttemptFailed() {
   if (state_ != SessionState::Starting) return;
   if (++bootAttempts_ >= maxBootAttempts_) state_ = SessionState::Paused;
