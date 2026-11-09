@@ -8,6 +8,7 @@ for the list of deliberately public routes.
 from fastapi import APIRouter
 
 from app.api.v1.routes import auth, batches, catalogue, device, devices, employees, health, public, rfid, sensors
+from app.api.v1.routes import inventory
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -20,3 +21,4 @@ api_router.include_router(sensors.router)
 api_router.include_router(rfid.router)
 api_router.include_router(device.router)
 api_router.include_router(public.router)
+api_router.include_router(inventory.router)
