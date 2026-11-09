@@ -5,6 +5,8 @@
     .venv/bin/python -m app.cli deactivate --email someone@example.com
     .venv/bin/python -m app.cli reactivate --email someone@example.com
     .venv/bin/python -m app.cli purge-sessions --days 30
+    .venv/bin/python -m app.cli purge-enquiries --months 12
+    .venv/bin/python -m app.cli purge-readings --days 90
     .venv/bin/python -m app.cli create-device --name "Inventory station 1"
     .venv/bin/python -m app.cli rotate-device-token --name "Inventory station 1"
     .venv/bin/python -m app.cli list-devices
@@ -35,9 +37,12 @@ from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.db.session import Database
 from app.models.auth import AuthSession, Employee, Role
-from app.models.devices import Device
+from app.models.alerts import Alert
+from app.models.devices import Device, SensorReading
+from app.models.ph import PhRecord
 from app.services import devices as device_service
 from app.services import employees as service
+from app.services import enquiries as enquiry_service
 
 
 class CliError(Exception):
@@ -116,6 +121,45 @@ def _purge_sessions(db: Session, args: argparse.Namespace, _: TextIO, out: TextI
     out.write(f"Deleted {getattr(result, 'rowcount', 0)} sessions that ended more than {args.days} days ago.\n")
 
 
+def _purge_enquiries(db: Session, args: argparse.Namespace, _: TextIO, out: TextIO) -> None:
+    if args.months < 1:
+        raise CliError("--months must be at least 1.")
+    deleted = enquiry_service.purge_older_than(db, months=args.months)
+    db.commit()
+    out.write(f"Deleted {deleted} contact-form messages older than {args.months} months.\n")
+
+
+READINGS_CHUNK = 5000
+
+
+def _purge_readings(db: Session, args: argparse.Namespace, _: TextIO, out: TextIO) -> None:
+    """Delete old sensor readings in chunks (one short transaction each, so the free database isn't locked).
+
+    Readings that an alert or a pH record points at are kept, because those records need their source.
+    """
+    if args.days < 1:
+        raise CliError("--days must be at least 1.")
+    cutoff = utcnow() - timedelta(days=args.days)
+    total = 0
+    while True:
+        ids = db.scalars(
+            select(SensorReading.id)
+            .where(
+                SensorReading.recorded_at < cutoff,
+                ~exists().where(Alert.sensor_reading_id == SensorReading.id),
+                ~exists().where(PhRecord.sensor_reading_id == SensorReading.id),
+            )
+            .order_by(SensorReading.id)
+            .limit(READINGS_CHUNK)
+        ).all()
+        if not ids:
+            break
+        db.execute(delete(SensorReading).where(SensorReading.id.in_(ids)))
+        db.commit()
+        total += len(ids)
+    out.write(f"Deleted {total} sensor readings older than {args.days} days.\n")
+
+
 def _device(db: Session, name: str) -> Device:
     device = device_service.find_by_name(db, name)
     if device is None:
@@ -171,6 +215,16 @@ def _parser() -> argparse.ArgumentParser:
     purge = commands.add_parser("purge-sessions", help="Delete sessions that ended long ago.")
     purge.add_argument("--days", type=int, default=30, help="Keep sessions that ended within this many days.")
     purge.set_defaults(handler=_purge_sessions)
+
+    purge_enquiries = commands.add_parser(
+        "purge-enquiries", help="Delete contact-form messages older than the retention period (personal data)."
+    )
+    purge_enquiries.add_argument("--months", type=int, default=12, help="Keep messages from the last N months.")
+    purge_enquiries.set_defaults(handler=_purge_enquiries)
+
+    purge_readings = commands.add_parser("purge-readings", help="Delete old sensor readings.")
+    purge_readings.add_argument("--days", type=int, default=90, help="Keep readings from the last N days.")
+    purge_readings.set_defaults(handler=_purge_readings)
 
     create_device = commands.add_parser("create-device", help="Register a sensor station and print its token once.")
     create_device.add_argument("--name", required=True, help="Unique name shown in the portal.")

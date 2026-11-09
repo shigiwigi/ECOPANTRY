@@ -23,6 +23,8 @@ const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = 
   devices: () => import("@/pages/portal/DevicesPage"),
   employees: () => import("@/pages/portal/EmployeesPage"),
   alerts: () => import("@/pages/portal/AlertsPage"),
+  audit: () => import("@/pages/portal/AuditPage"),
+  enquiries: () => import("@/pages/portal/EnquiriesPage"),
 }
 
 function portalRoute(module: PortalModule): RouteObject {

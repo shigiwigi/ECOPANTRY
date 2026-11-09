@@ -24,6 +24,8 @@ PUBLIC_ROUTES = {
     # Customer website: published catalogue only, public fields only (see tests/test_catalogue.py).
     ("get", "/api/v1/public/catalogue"),
     ("get", "/api/v1/public/catalogue/products/{slug}"),
+    # Contact form: the one public write. Honeypot, rate limits, no echo (see tests/test_records_contact_audit.py).
+    ("post", "/api/v1/public/enquiries"),
 }
 
 

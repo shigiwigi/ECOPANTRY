@@ -1,4 +1,5 @@
 import { BinFullBanner } from "@/features/alerts/BinFullBanner"
+import { WasteRecords } from "@/features/records/WasteRecords"
 import { SensorPage, type MetricSpec } from "@/features/sensors/SensorPage"
 
 const METRICS: MetricSpec[] = [
@@ -15,11 +16,14 @@ const METRICS: MetricSpec[] = [
 
 export default function WastePage() {
   return (
-    <SensorPage
-      moduleId="waste"
-      metrics={METRICS}
-      notice={<BinFullBanner />}
-      footnote="The bin's fullness comes from its weight alone, and needs calibrating against the actual bin. Waste records with category, reason and employee come later."
-    />
+    <div className="space-y-8">
+      <SensorPage
+        moduleId="waste"
+        metrics={METRICS}
+        notice={<BinFullBanner />}
+        footnote="The bin's fullness comes from its weight alone, and needs calibrating against the actual bin."
+      />
+      <WasteRecords />
+    </div>
   )
 }

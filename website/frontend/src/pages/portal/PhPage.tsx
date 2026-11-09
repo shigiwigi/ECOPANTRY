@@ -1,4 +1,5 @@
 import { FlaskConical } from "lucide-react"
+import { PhRecords } from "@/features/records/PhRecords"
 import { SensorPage, type MetricSpec } from "@/features/sensors/SensorPage"
 
 const METRICS: MetricSpec[] = [
@@ -30,11 +31,14 @@ function ExperimentalNotice() {
 
 export default function PhPage() {
   return (
-    <SensorPage
-      moduleId="ph"
-      metrics={METRICS}
-      notice={<ExperimentalNotice />}
-      footnote="Sample records with product reference ranges and operators aren't built yet; this page shows the probe's live value only."
-    />
+    <div className="space-y-8">
+      <SensorPage
+        moduleId="ph"
+        metrics={METRICS}
+        notice={<ExperimentalNotice />}
+        footnote="The live value comes from the station's probe. Recorded measurements are below."
+      />
+      <PhRecords />
+    </div>
   )
 }

@@ -221,7 +221,13 @@ describe("environment page", () => {
 
 describe("pH page", () => {
   it("always carries the experimental warning", async () => {
-    stubFetch((call) => (call.url.includes("/history") ? json(history()) : json({ server_time: "", stations: [station()] })))
+    stubFetch((call) =>
+      call.url.includes("/ph/records")
+        ? json({ items: [], total: 0, limit: 20, offset: 0 })
+        : call.url.includes("/history")
+          ? json(history())
+          : json({ server_time: "", stations: [station()] }),
+    )
     renderAt("/portal/ph", staff("storekeeper"))
 
     const note = await screen.findByRole("note")
