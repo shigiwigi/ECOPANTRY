@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { hasContactDetails, siteConfig } from "@/config/site"
+import { ContactForm } from "@/features/contact/ContactForm"
 import { useDocumentTitle } from "@/lib/document-title"
 
 export default function ContactPage() {
@@ -46,6 +47,8 @@ export default function ContactPage() {
             The bakery's contact details haven't been added yet. They will appear here once the owners publish them.
           </p>
         )}
+
+        <ContactForm />
       </div>
     </div>
   )

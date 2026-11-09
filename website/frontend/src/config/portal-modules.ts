@@ -8,6 +8,7 @@ import {
   FileText,
   FlaskConical,
   IdCard,
+  Inbox,
   LayoutDashboard,
   type LucideIcon,
   Package,
@@ -237,8 +238,6 @@ export const PORTAL_MODULES: PortalModule[] = [
     icon: ClipboardList,
     group: "Records",
     roles: OVERSIGHT,
-    planned: ["Immutable change history with user, action and timestamp", "Filtering by user, module and date"],
-    requires: "Audit log viewer API (milestone M13).",
   },
   {
     id: "devices",
@@ -268,6 +267,16 @@ export const PORTAL_MODULES: PortalModule[] = [
     summary:
       "Finished products shown on the customer website. Separate from ingredient inventory; only published products are public.",
     icon: Store,
+    group: "System",
+    roles: ["admin"],
+  },
+  {
+    id: "enquiries",
+    path: "enquiries",
+    label: "Enquiries",
+    title: "Enquiries",
+    summary: "Messages sent through the public website's contact form. They contain personal data, so only administrators see them.",
+    icon: Inbox,
     group: "System",
     roles: ["admin"],
   },
