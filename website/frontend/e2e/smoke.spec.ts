@@ -245,7 +245,8 @@ async function checkPortalLayout(page: Page, width: number) {
   }
 
   // Scrolled to the bottom, the last piece of content sits above the fixed bar.
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  // The portal pins its chrome and scrolls inside <main>, not the window.
+  await page.locator("main").evaluate((main) => main.scrollTo(0, main.scrollHeight))
   const barTop = (await quick.boundingBox())?.y ?? 0
   const lastBottom = await page
     .locator("main")
