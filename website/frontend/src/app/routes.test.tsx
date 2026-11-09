@@ -20,6 +20,7 @@ function renderAt(path: string, user: StaffUser | null = null) {
     isPreview: false,
     checkSession: vi.fn(),
     signIn: vi.fn(),
+    setSession: vi.fn(),
     signOut: vi.fn(),
     setPreviewRole: null,
   }
@@ -60,7 +61,7 @@ describe("routing", () => {
   })
 
   it("shows only the modules a storekeeper may use", async () => {
-    renderAt("/portal", staff("shopkeeper"))
+    renderAt("/portal", staff("storekeeper"))
     const nav = await screen.findByRole("navigation", { name: "Portal" })
     expect(within(nav).getByRole("link", { name: "Inventory" })).toBeInTheDocument()
     expect(within(nav).getByRole("link", { name: "QR labels" })).toBeInTheDocument()
@@ -69,7 +70,7 @@ describe("routing", () => {
   })
 
   it("blocks a role from a page it can't use, even by direct URL", async () => {
-    renderAt("/portal/devices", staff("food_inspector"))
+    renderAt("/portal/devices", staff("inspector"))
     expect(
       await screen.findByRole("heading", { name: "You don't have access to this page", level: 1 }),
     ).toBeInTheDocument()
@@ -89,7 +90,7 @@ describe("routing", () => {
   })
 
   it("keeps the portal sidebar on an unknown portal page", async () => {
-    renderAt("/portal/no-such-module", staff("shopkeeper"))
+    renderAt("/portal/no-such-module", staff("storekeeper"))
     expect(await screen.findByRole("heading", { name: "This page doesn't exist", level: 1 })).toBeInTheDocument()
     expect(screen.getByRole("navigation", { name: "Portal" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/portal")
@@ -104,7 +105,7 @@ describe("routing", () => {
   })
 
   it("names the portal module in the tab title", async () => {
-    renderAt("/portal/inventory", staff("shopkeeper"))
+    renderAt("/portal/inventory", staff("storekeeper"))
     await screen.findByRole("heading", { name: "Ingredient inventory", level: 1 })
     expect(document.title).toBe("Ingredient inventory | EcoPantry portal")
   })
@@ -127,7 +128,7 @@ describe("routing", () => {
   })
 
   it("keeps storekeepers and inspectors out of the catalogue module", async () => {
-    for (const role of ["shopkeeper", "food_inspector"] as const) {
+    for (const role of ["storekeeper", "inspector"] as const) {
       renderAt("/portal/catalogue", staff(role))
       expect(await screen.findByRole("heading", { name: "You don't have access to this page" })).toBeInTheDocument()
       const nav = screen.getByRole("navigation", { name: "Portal" })

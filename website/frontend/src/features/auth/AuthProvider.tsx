@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ApiError, apiRequest, onUnauthorized, setCsrfToken } from "@/lib/api/client"
-import { auth } from "@/lib/firebase"
+import { signOutOfGoogle } from "@/lib/firebase"
 import { AuthContext, type AuthContextValue, type SessionEndReason, type SessionStatus } from "./auth-context"
 import { PORTAL_PREVIEW_ENABLED, PREVIEW_USER } from "./preview"
-import { normalizeRole, type Role, type StaffUser } from "./roles"
+import type { Role, StaffUser } from "./roles"
 import type { SignInValues } from "./schemas"
 
 interface AuthState {
@@ -17,15 +17,12 @@ const INITIAL: AuthState = PORTAL_PREVIEW_ENABLED
   ? { user: PREVIEW_USER, status: "ready", endReason: null }
   : { user: null, status: "unknown", endReason: null }
 
-/** Validates a login or /auth/me response, normalizes role codes, and keeps its CSRF token in memory. */
+/** Validates a login or /auth/me response and keeps its CSRF token in memory. */
 async function acceptSession(response: unknown): Promise<StaffUser> {
   const { sessionResponseSchema } = await import("./schemas")
   const session = sessionResponseSchema.parse(response)
   setCsrfToken(session.csrf_token)
-  return {
-    ...session.user,
-    role: normalizeRole(session.user.role),
-  }
+  return session.user
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -58,9 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (PORTAL_PREVIEW_ENABLED) return
     onUnauthorized(() => {
       setCsrfToken(null)
-      if (auth?.currentUser) {
-        auth.signOut().catch(() => {})
-      }
+      void signOutOfGoogle()
       setState((current) => (current.user ? { user: null, status: "ready", endReason: "session_ended" } : current))
     })
     return () => onUnauthorized(null)
@@ -87,21 +82,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    try {
-      if (auth?.currentUser) {
-        await auth.signOut()
-      }
-    } catch {
-      // Ignore client sign-out failures
-    }
+    await signOutOfGoogle()
 
     setCsrfToken(null)
     checkStarted.current = false
-    setState({ user: null, status: "ready", endReason: null })
+    setState({ user: null, status: "ready", endReason: "signed_out" })
   }, [isPreview])
 
   const setPreviewRole = useCallback(
-    (role: Role) => setState((current) => (current.user ? { ...current, user: { ...current.user, role: normalizeRole(role) } } : current)),
+    (role: Role) => setState((current) => (current.user ? { ...current, user: { ...current.user, role } } : current)),
     [],
   )
 

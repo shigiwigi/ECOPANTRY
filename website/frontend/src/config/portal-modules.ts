@@ -51,8 +51,8 @@ export interface PortalModule {
 }
 
 const ALL = ROLES
-const MANAGE: readonly Role[] = ["admin", "shopkeeper"]
-const OVERSIGHT: readonly Role[] = ["admin", "food_inspector"]
+const MANAGE: readonly Role[] = ["admin", "storekeeper"]
+const OVERSIGHT: readonly Role[] = ["admin", "inspector"]
 
 export const PORTAL_GROUPS: PortalGroup[] = ["Overview", "Stock", "Monitoring", "Records", "System"]
 
@@ -284,12 +284,14 @@ export const PORTAL_MODULES: PortalModule[] = [
 ]
 
 /**
- * High-frequency modules pinned to the mobile/tablet bottom bar:
- * Dashboard, Inventory, Scan, and Environment, followed by "More" (5 buttons total).
+ * High-frequency modules pinned to the mobile/tablet bottom bar, in order. Every
+ * other module (Alerts included) stays one tap away under "More". Three tabs plus
+ * More leaves room for full labels on a 320px phone. The QR scanner isn't a tab:
+ * it has its own button in the top bar.
  */
-export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "inventory", "scanner", "environment"]
+export const MOBILE_TAB_IDS: readonly string[] = ["dashboard", "inventory", "environment"]
 
-/** The module behind the scanner shortcut. */
+/** The module behind the top bar's scan shortcut. */
 export const SCANNER_MODULE_ID = "scanner"
 
 export function portalHref(module: PortalModule): string {

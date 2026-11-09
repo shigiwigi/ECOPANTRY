@@ -62,6 +62,7 @@ function renderAt(path: string, user: StaffUser | null = null, { isPreview = fal
     isPreview,
     checkSession: vi.fn(),
     signIn: vi.fn(),
+    setSession: vi.fn(),
     signOut: vi.fn(),
     setPreviewRole: null,
   }

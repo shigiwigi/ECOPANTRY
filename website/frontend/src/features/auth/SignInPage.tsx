@@ -2,11 +2,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useEffect, useState, type FormEvent } from "react"
 import { useForm } from "react-hook-form"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
-import {
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-} from "firebase/auth"
 import { z } from "zod"
 
 import { Logo } from "@/components/common/Logo"
@@ -19,39 +14,44 @@ import { ApiError, apiRequest } from "@/lib/api/client"
 import { useAuth } from "./auth-context"
 import { ThemeMenu } from "@/features/theme/ThemeMenu"
 import { useDocumentTitle } from "@/lib/document-title"
-import { auth, googleProvider } from "@/lib/firebase"
+import {
+  completeGoogleRedirect,
+  firebaseErrorCode,
+  GoogleSignInUnavailable,
+  returningFromGoogleRedirect,
+  signInWithGoogle,
+  signOutOfGoogle,
+} from "@/lib/firebase"
 
 const formSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
-  confirmPassword: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
+
+/** Codes for which the Google account is real but isn't an active staff account. */
+const NOT_STAFF_CODES = new Set(["google_account_not_staff", "account_disabled"])
+
+const UNREACHABLE = "Can't reach the EcoPantry server, so sign-in isn't available right now. Try again shortly."
 
 export default function SignInPage() {
   const { user, status, endReason, checkSession, signIn, setSession } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [isSignUp, setIsSignUp] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [isExchangingSession, setIsExchangingSession] = useState(false)
 
-  useDocumentTitle(isSignUp ? "Create account" : "Staff sign-in", "portal")
+  useDocumentTitle("Staff sign-in", "portal")
 
   const {
     register,
     handleSubmit,
-    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-      confirmPassword: "",
-    },
+    defaultValues: { email: "", password: "" },
   })
 
   // Silent session check in the background (non-blocking)
@@ -63,57 +63,55 @@ export default function SignInPage() {
 
   const destination = (location.state as { from?: string } | null)?.from ?? "/portal"
 
-  // Process redirect result if redirected by mobile fallback
-  useEffect(() => {
-    if (!auth) return
-
-    let isMounted = true
-    const handleRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth)
-        if (result && isMounted) {
-          setIsExchangingSession(true)
-          const idToken = await result.user.getIdToken()
-          const sessionResponse = await apiRequest("/auth/google", {
-            method: "POST",
-            body: { id_token: idToken },
-          })
-          if (setSession) {
-            await setSession(sessionResponse)
-          }
-          navigate(destination, { replace: true })
-        }
-      } catch (error: any) {
-        if (!isMounted) return
-        console.error("Redirect auth error:", error)
-        const isUnauthorized =
-          error?.status === 403 ||
-          error?.message?.includes("ordinary_user_no_permission") ||
-          error?.message?.toLowerCase().includes("deactivated")
-
-        if (isUnauthorized) {
-          navigate("/unauthorized", { replace: true })
-          return
-        }
-
-        if (error instanceof ApiError) {
-          setFormError(error.message)
-        } else {
-          setFormError(error?.message?.replace("Firebase: ", "") || "Google sign-in failed.")
-        }
-      } finally {
-        if (isMounted) {
-          setIsGoogleSubmitting(false)
-          setIsExchangingSession(false)
-        }
+  /** Turns a failed Google sign-in into a message, or sends the person to the "not linked" page. */
+  const handleGoogleFailure = async (error: unknown) => {
+    if (error instanceof ApiError) {
+      if (error.code !== null && NOT_STAFF_CODES.has(error.code)) {
+        await signOutOfGoogle()
+        navigate("/unauthorized", { replace: true })
+        return
       }
+      setFormError(error.isUnreachable ? UNREACHABLE : error.message)
+      return
     }
+    if (error instanceof GoogleSignInUnavailable) {
+      setFormError("Google sign-in isn't available here. Sign in with your email and password.")
+      return
+    }
+    if (firebaseErrorCode(error) === "auth/popup-closed-by-user") {
+      setFormError("The sign-in window was closed before it finished. Try again.")
+      return
+    }
+    setFormError("Google sign-in failed. Try again, or use your email and password.")
+  }
 
-    void handleRedirectResult()
+  const exchangeGoogleToken = async (idToken: string) => {
+    setIsExchangingSession(true)
+    const session = await apiRequest<unknown>("/auth/google", { method: "POST", body: { id_token: idToken } })
+    await setSession(session)
+    navigate(destination, { replace: true })
+  }
+
+  // Back from a Google redirect (used when the browser blocked the popup).
+  useEffect(() => {
+    if (!returningFromGoogleRedirect()) return
+    let current = true
+    void (async () => {
+      try {
+        const idToken = await completeGoogleRedirect()
+        if (idToken && current) await exchangeGoogleToken(idToken)
+      } catch (error) {
+        if (current) await handleGoogleFailure(error)
+      } finally {
+        if (current) setIsExchangingSession(false)
+      }
+    })()
     return () => {
-      isMounted = false
+      current = false
     }
-  }, [destination, navigate, setSession])
+    // Runs once on arrival; the helpers only close over stable values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Only block when exchanging an active login token; don't block on background status check
   if (isExchangingSession) return <RouteLoading />
@@ -121,89 +119,15 @@ export default function SignInPage() {
 
   const submit = handleSubmit(async (values) => {
     setFormError(null)
-
-    if (isSignUp) {
-      if (!values.confirmPassword) {
-        setFormError("Please confirm your password.")
-        return
-      }
-      if (values.password !== values.confirmPassword) {
-        setFormError("Passwords do not match.")
-        return
-      }
-      if (values.password.length < 12) {
-        setFormError("Password must be at least 12 characters.")
-        return
-      }
-    }
-
     try {
-      if (isSignUp) {
-        const registerResponse = await apiRequest("/auth/register", {
-          method: "POST",
-          body: {
-            email: values.email.trim().toLowerCase(),
-            password: values.password,
-          },
-        })
-        if (setSession) {
-          await setSession(registerResponse)
-        }
-      } else {
-        await signIn({ email: values.email.trim().toLowerCase(), password: values.password })
-      }
+      await signIn({ email: values.email.trim().toLowerCase(), password: values.password })
       navigate(destination, { replace: true })
-    } catch (error: any) {
-      // 1. Forbidden / unauthorized / unlisted accounts redirect to /unauthorized
-      const isForbidden =
-        (error instanceof ApiError && error.status === 403) ||
-        error?.message?.includes("not been authorized") ||
-        error?.message?.includes("ordinary_user_no_permission") ||
-        error?.message?.toLowerCase().includes("deactivated")
-
-      if (isForbidden) {
-        navigate("/unauthorized", { replace: true })
-        return
-      }
-
-      // 2. Unreachable backend server
-      if (error instanceof ApiError && error.isUnreachable) {
-        setFormError("Can't reach the EcoPantry server, so sign-in isn't available right now. Try again shortly.")
-        return
-      }
-
-      // 3. Unregistered account (404)
-      if (
-        error instanceof ApiError &&
-        (error.status === 404 ||
-          error.message?.toLowerCase().includes("not registered") ||
-          error.message?.includes("account_not_found"))
-      ) {
-        setFormError("This account is not registered.")
-        return
-      }
-
-      // 4. Wrong password (401)
-      if (
-        error instanceof ApiError &&
-        (error.status === 401 ||
-          error.message?.toLowerCase().includes("incorrect password") ||
-          error.message?.includes("incorrect_password") ||
-          error.message?.includes("invalid_credentials"))
-      ) {
-        setFormError("Incorrect password. Please try again.")
-        return
-      }
-
-      // 5. Default fallback
+    } catch (error) {
       if (error instanceof ApiError) {
-        setFormError(error.message)
+        // The backend's own wording for invalid_credentials, account_disabled and account_locked.
+        setFormError(error.isUnreachable ? UNREACHABLE : error.message)
       } else {
-        setFormError(
-          isSignUp
-            ? "Sign-up failed. Try again shortly."
-            : "Sign-in failed because the server sent an unexpected response."
-        )
+        setFormError("Sign-in failed because the server sent an unexpected response.")
       }
     }
   })
@@ -211,75 +135,11 @@ export default function SignInPage() {
   const handleGoogleSignIn = async () => {
     setFormError(null)
     setIsGoogleSubmitting(true)
-
     try {
-      if (!auth) {
-        throw new Error("Firebase Auth is not properly initialized. Check your environment settings.")
-      }
-
-      googleProvider.setCustomParameters({
-        prompt: "select_account",
-      })
-
-      let idToken: string | null = null
-
-      try {
-        const result = await signInWithPopup(auth, googleProvider)
-        idToken = await result.user.getIdToken()
-      } catch (popupErr: any) {
-        if (
-          popupErr?.code === "auth/popup-blocked" ||
-          popupErr?.code === "auth/cancelled-popup-request"
-        ) {
-          await signInWithRedirect(auth, googleProvider)
-          return
-        }
-        throw popupErr
-      }
-
-      if (idToken) {
-        setIsExchangingSession(true)
-
-        try {
-          const sessionResponse = await apiRequest("/auth/google", {
-            method: "POST",
-            body: { id_token: idToken },
-          })
-
-          if (setSession) {
-            await setSession(sessionResponse)
-          }
-          navigate(destination, { replace: true })
-        } catch (apiErr: any) {
-          const isUnauthorized =
-            apiErr?.status === 403 ||
-            apiErr?.message?.includes("ordinary_user_no_permission") ||
-            apiErr?.message?.toLowerCase().includes("deactivated")
-
-          if (isUnauthorized) {
-            if (auth.currentUser) {
-              await auth.signOut().catch(() => {})
-            }
-            navigate("/unauthorized", { replace: true })
-            return
-          }
-          throw apiErr
-        }
-      }
-    } catch (error: any) {
-      console.error("Google sign-in caught error:", error)
-
-      if (error?.code === "auth/popup-closed-by-user") {
-        setFormError("The sign-in window was closed before completing. Please try again.")
-        return
-      }
-
-      if (error instanceof ApiError) {
-        setFormError(error.message)
-      } else {
-        const errorMsg = error?.message?.replace("Firebase: ", "") || "Google sign-in failed."
-        setFormError(errorMsg)
-      }
+      const idToken = await signInWithGoogle()
+      if (idToken) await exchangeGoogleToken(idToken)
+    } catch (error) {
+      await handleGoogleFailure(error)
     } finally {
       setIsGoogleSubmitting(false)
       setIsExchangingSession(false)
@@ -294,12 +154,6 @@ export default function SignInPage() {
     return submit(event)
   }
 
-  const toggleAuthMode = () => {
-    setIsSignUp((prev) => !prev)
-    setFormError(null)
-    reset()
-  }
-
   return (
     <div className="flex min-h-dvh flex-col">
       <SkipLink />
@@ -312,12 +166,10 @@ export default function SignInPage() {
       <main id={MAIN_CONTENT_ID} tabIndex={-1} className="grid flex-1 place-items-center px-4 py-10 outline-none">
         <div className="w-full max-w-sm">
           <h1 className="text-2xl font-semibold tracking-tight">
-            {isSignUp ? "Create an account" : "Staff sign-in"}
+            Staff sign-in
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {isSignUp
-              ? "Create your account to access the pantry inventory and management tools."
-              : "For bakery staff and inspectors. Customers don't need an account."}
+            For bakery staff and inspectors. Customers don't need an account. Accounts are created by an administrator.
           </p>
 
           <div className="mt-6 space-y-4">
@@ -392,7 +244,7 @@ export default function SignInPage() {
                 <Input
                   id="password"
                   type="password"
-                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  autoComplete="current-password"
                   aria-invalid={errors.password ? true : undefined}
                   aria-describedby={errors.password ? "password-error" : undefined}
                   {...register("password")}
@@ -404,50 +256,14 @@ export default function SignInPage() {
                 )}
               </div>
 
-              {isSignUp && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    aria-invalid={errors.confirmPassword ? true : undefined}
-                    aria-describedby={errors.confirmPassword ? "confirm-password-error" : undefined}
-                    {...register("confirmPassword")}
-                  />
-                  {errors.confirmPassword && (
-                    <p id="confirm-password-error" className="text-sm text-destructive">
-                      {errors.confirmPassword.message}
-                    </p>
-                  )}
-                </div>
-              )}
-
               <Button
                 type="submit"
                 className="h-9 w-full aria-disabled:opacity-70"
                 aria-disabled={isSubmitting || isGoogleSubmitting || isExchangingSession || undefined}
               >
-                {isSubmitting
-                  ? isSignUp
-                    ? "Creating account…"
-                    : "Signing in…"
-                  : isSignUp
-                  ? "Create account"
-                  : "Sign in"}
+                {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
             </form>
-
-            <div className="text-center text-sm text-muted-foreground">
-              {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-              <button
-                type="button"
-                onClick={toggleAuthMode}
-                className="font-medium text-primary underline-offset-4 hover:underline"
-              >
-                {isSignUp ? "Sign in" : "Sign up"}
-              </button>
-            </div>
           </div>
         </div>
       </main>

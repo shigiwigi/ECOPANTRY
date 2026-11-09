@@ -159,6 +159,8 @@ describe("staff sign-in against the API", () => {
   it("stays signed in and says so when the server can't be reached to sign out", async () => {
     mockApi({
       "GET /api/v1/auth/me": () => json(SESSION),
+      // The dashboard's station summary polls this; an unanswered call would be a 401 and end the session.
+      "GET /api/v1/sensors/stations": () => json({ stations: [] }),
       "POST /api/v1/auth/logout": () => new Response("Bad gateway", { status: 502 }),
     })
     renderApp("/portal")
@@ -167,7 +169,7 @@ describe("staff sign-in against the API", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Sign out" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("you're still signed in")
-    expect(screen.getByRole("heading", { name: "Dashboard", level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Welcome back/, level: 1 })).toBeInTheDocument()
   })
 
   it("returns to sign-in with a notice when the server ends the session", async () => {

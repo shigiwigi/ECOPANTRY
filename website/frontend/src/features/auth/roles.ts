@@ -1,11 +1,12 @@
-export const ROLES = ["admin", "shopkeeper", "food_inspector"] as const
+/** Role ids are the backend's codes. Labels are only for people to read. */
+export const ROLES = ["admin", "storekeeper", "inspector"] as const
 
 export type Role = (typeof ROLES)[number]
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Administrator",
-  shopkeeper: "Shopkeeper",
-  food_inspector: "Food Inspector",
+  storekeeper: "Shopkeeper",
+  inspector: "Food inspector",
 }
 
 export interface StaffUser {
@@ -13,29 +14,16 @@ export interface StaffUser {
   name: string
   email: string
   role: Role
-  has_password_auth?: boolean
-}
-
-/**
- * Normalizes backend role aliases (storekeeper -> shopkeeper, inspector -> food_inspector).
- */
-export function normalizeRole(role: string): Role {
-  const clean = role.toLowerCase().trim()
-  if (clean === "storekeeper" || clean === "shopkeeper") return "shopkeeper"
-  if (clean === "inspector" || clean === "food_inspector") return "food_inspector"
-  return "admin"
+  /** From the backend; for hiding controls only. The API enforces permissions. */
+  permissions?: string[]
 }
 
 export function isRole(value: unknown): value is Role {
-  return typeof value === "string" && ROLES.includes(value as Role)
+  return typeof value === "string" && (ROLES as readonly string[]).includes(value)
 }
 
-export function hasRole(
-  userOrRole: StaffUser | Role | string | null | undefined,
-  allowed: readonly Role[]
-): boolean {
-  if (!userOrRole) return false
-  const rawRole = typeof userOrRole === "string" ? userOrRole : userOrRole.role
-  const normalized = normalizeRole(rawRole)
-  return allowed.includes(normalized)
+export function hasRole(user: { role: string } | Role | string | null | undefined, allowed: readonly Role[]): boolean {
+  if (!user) return false
+  const role = typeof user === "string" ? user : user.role
+  return isRole(role) && allowed.includes(role)
 }
