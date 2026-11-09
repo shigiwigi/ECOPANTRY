@@ -81,16 +81,10 @@ export const PORTAL_MODULES: PortalModule[] = [
     path: "alerts",
     label: "Alerts",
     title: "Alerts",
-    summary: "Threshold breaches, expiring batches and device problems raised by the backend.",
+    summary: "Threshold breaches on live sensor readings, raised by the backend.",
     icon: BellRing,
     group: "Overview",
     roles: ALL,
-    planned: [
-      "Open, acknowledged and resolved alerts with timestamps",
-      "Alerts from temperature, humidity, expiry, stock and device rules",
-      "Acknowledgement recorded against the signed-in user",
-    ],
-    requires: "Backend alert rules (milestone M9).",
   },
   {
     id: "inventory",
@@ -121,11 +115,6 @@ export const PORTAL_MODULES: PortalModule[] = [
     icon: CalendarClock,
     group: "Stock",
     roles: ALL,
-    planned: [
-      "Near-expiry and expired batch lists",
-      "First Expired, First Out recommendation per ingredient",
-    ],
-    requires: "Batch API with expiry dates (milestone M7).",
   },
   {
     id: "scanner",
