@@ -12,8 +12,8 @@ const sessionUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
-  // Accepts backend codes ("storekeeper", "inspector") and frontend codes ("shopkeeper", "food_inspector", "admin")
-  role: z.string(),
+  // An unknown role code fails validation, so no session is created for it.
+  role: z.enum(["admin", "storekeeper", "inspector"]),
   permissions: z.array(z.string()).optional().default([]),
 })
 

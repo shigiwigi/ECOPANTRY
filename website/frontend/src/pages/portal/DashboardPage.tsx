@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const role = user?.role ?? "shopkeeper"
+  const role = user?.role ?? "storekeeper"
 
   return (
     <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
@@ -31,8 +31,8 @@ export default function DashboardPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {role === "admin" && "Full administrative control over users, inventory, hardware, and safety records."}
-            {role === "shopkeeper" && "Pantry stock monitoring, batch lookups, and ingredient intake management."}
-            {role === "food_inspector" && "Food safety compliance, cold chain logs, and expiration tracking."}
+            {role === "storekeeper" && "Pantry stock monitoring, batch lookups, and ingredient intake management."}
+            {role === "inspector" && "Food safety compliance, cold chain logs, and expiration tracking."}
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default function DashboardPage() {
       )}
 
       {/* SHOPKEEPER VIEW */}
-      {role === "shopkeeper" && (
+      {role === "storekeeper" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">
@@ -163,7 +163,7 @@ export default function DashboardPage() {
       )}
 
       {/* FOOD INSPECTOR VIEW */}
-      {role === "food_inspector" && (
+      {role === "inspector" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-xl border bg-card p-5 shadow-sm flex flex-col justify-between">

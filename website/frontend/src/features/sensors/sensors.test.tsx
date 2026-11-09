@@ -78,6 +78,7 @@ function renderAt(path: string, user: StaffUser, { isPreview = false } = {}) {
     isPreview,
     checkSession: vi.fn(),
     signIn: vi.fn(),
+    setSession: vi.fn(),
     signOut: vi.fn(),
     setPreviewRole: null,
   }
@@ -165,7 +166,7 @@ describe("environment page", () => {
     stubFetch((call) =>
       call.url.includes("/history") ? json(history()) : json({ server_time: "2026-11-06T10:00:00Z", stations: [station()] }),
     )
-    renderAt("/portal/environment", staff("shopkeeper"))
+    renderAt("/portal/environment", staff("storekeeper"))
 
     expect(await screen.findByRole("heading", { name: "Storage environment", level: 1 })).toBeInTheDocument()
     expect(await screen.findByText("24.5")).toBeInTheDocument()
@@ -184,7 +185,7 @@ describe("environment page", () => {
         ? json(history())
         : json({ server_time: "2026-11-06T10:00:00Z", stations: [station({ live: false, live_until: null, stale: true })] }),
     )
-    renderAt("/portal/environment", staff("food_inspector"))
+    renderAt("/portal/environment", staff("inspector"))
 
     expect(await screen.findByText(/Uploads are paused to save the free hosting plan/)).toBeInTheDocument()
     expect(screen.getAllByText("Paused").length).toBeGreaterThan(0)
@@ -221,7 +222,7 @@ describe("environment page", () => {
 describe("pH page", () => {
   it("always carries the experimental warning", async () => {
     stubFetch((call) => (call.url.includes("/history") ? json(history()) : json({ server_time: "", stations: [station()] })))
-    renderAt("/portal/ph", staff("shopkeeper"))
+    renderAt("/portal/ph", staff("storekeeper"))
 
     const note = await screen.findByRole("note")
     expect(within(note).getByText(/Never use it on its own to decide whether food is safe/)).toBeInTheDocument()
@@ -302,7 +303,7 @@ describe("employees page", () => {
 
   it("is read-only for an inspector", async () => {
     stubFetch(api)
-    renderAt("/portal/employees", staff("food_inspector"))
+    renderAt("/portal/employees", staff("inspector"))
 
     expect(await screen.findByText("Sam Baker")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Revoke/ })).not.toBeInTheDocument()

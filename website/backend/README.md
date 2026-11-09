@@ -117,6 +117,8 @@ or `website/backend/.env` (environment variables win). See `.env.example`.
 | `SESSION_COOKIE_SECURE` | no | unset | Unset: `Secure` cookie only in production. Production refuses `false`. When secure, the cookie is named `__Host-ecopantry_session`, otherwise `ecopantry_session`. |
 | `LOGIN_MAX_FAILED_ATTEMPTS` | no | `5` | Wrong passwords in a row before a temporary lockout. |
 | `LOGIN_LOCKOUT_MINUTES` | no | `15` | Length of that lockout. |
+| `CORS_ORIGINS` | no | `http://localhost:5173,http://127.0.0.1:5173` | Exact browser origins allowed to call the API with the session cookie (comma-separated or a JSON list). No wildcards, paths or trailing slashes. Production (`render.yaml`) sets the two Firebase Hosting origins. Other origins get no CORS headers. |
+| `FIREBASE_PROJECT_ID` | no | `ecopantry-a7342` | Firebase project whose Google sign-in ID tokens `/auth/google` accepts. Not a secret; no service-account key is needed. Set it empty to turn Google sign-in off (`503 google_sign_in_unavailable`). |
 
 `DATABASE_URL` is held as a secret value, so it doesn't show up in logs or
 `repr()` output. Alembic reads the same setting; there is no URL in `alembic.ini`.
@@ -131,11 +133,13 @@ All routes are under `/api/v1`.
 | GET | `/api/v1/health/ready` | Readiness. Runs `SELECT 1` on PostgreSQL. `200 {"status": "ready", "database": "ok"}`, or `503 {"status": "unavailable", "database": "unreachable"}`. |
 | GET | `/api/v1/docs`, `/api/v1/openapi.json` | Swagger UI and OpenAPI schema (not in production). |
 | POST | `/api/v1/auth/login` | Public. `{email, password}` (JSON only). Sets the session cookie and returns `{user, csrf_token, expires_at}`. `401 invalid_credentials`, `403 account_disabled` (right password, deactivated account), `429 account_locked`. |
+| POST | `/api/v1/auth/google` | Public. `{id_token}`: a Firebase Authentication ID token from Google sign-in. The signature, project, expiry and `email_verified` are checked by Firebase Admin; then it signs in the **existing, active** employee with that email (same response and cookie as login). It never creates or claims an account. `401 invalid_google_token`, `403 google_account_not_staff` (no account has that email), `403 account_disabled`, `503 google_sign_in_unavailable`. |
 | POST | `/api/v1/auth/logout` | Public. Ends the session on the server and clears the cookie. Needs `X-CSRF-Token` when a session exists. `204`. |
 | GET | `/api/v1/auth/me` | Session required. Same body as login. The frontend calls it to restore a session after a reload. |
 | POST | `/api/v1/auth/password` | Session + CSRF. `{current_password, new_password}`. Signs out the employee's other sessions. `204`; `400 invalid_current_password` / `password_rejected`. |
-| GET | `/api/v1/employees` | `employees.view` (Administrator, Inspector). Staff accounts, never with password data. |
-| POST | `/api/v1/employees` | `employees.manage` (Administrator). `{email, name, role, password}` creates an account. `201`; `409` for a taken email. |
+| GET | `/api/v1/employees` | `employees.view` (Administrator, Inspector). Every staff account, deactivated ones included, never with password data. `?active=true` or `?active=false` filters by status. |
+| POST | `/api/v1/employees` | `employees.manage` (Administrator). `{email, name, role, password?}` creates an account. `role` is `admin`, `storekeeper` or `inspector` (anything else `422`). Without `password` the account can only sign in with Google until a password is set. `201`; `409 conflict` for a taken email (reactivate a deactivated account instead). |
+| PATCH | `/api/v1/employees/{id}` | `employees.manage`. `{role}` changes the role and ends all that account's sessions (audited as `employee.role_changed`). You can't change your own role or demote the last active administrator (`409`). |
 | POST | `/api/v1/employees/{id}/deactivate` | `employees.manage`. Disables the account and ends all its sessions. You can't deactivate yourself or the last active administrator (`409`). |
 | POST | `/api/v1/employees/{id}/reactivate` | `employees.manage`. Re-enables the account and clears any lockout. |
 | POST | `/api/v1/employees/{id}/password` | `employees.manage`. Sets a new password and ends all that account's sessions. `204`. |
@@ -158,8 +162,10 @@ catalogue has no link to ingredient inventory, so it can't expose stock data.
 
 ### Sessions and CSRF
 
-- Sign-in sets an HttpOnly, `SameSite=Lax`, `Path=/` cookie holding a random
-  token. The database stores only its SHA-256, so a copy of the database can't
+- Sign-in sets an HttpOnly, `Path=/` cookie holding a random token. It is
+  `SameSite=Lax` in development; where it is Secure (always in production) it
+  is `__Host-ecopantry_session` with `SameSite=None`, because the website on
+  Firebase Hosting calls the API from another site (docs/DEPLOYMENT.md). The database stores only its SHA-256, so a copy of the database can't
   be used to sign in.
 - Every `POST`/`PUT`/`PATCH`/`DELETE` made with a session must send the
   session's CSRF token (from the login or `/auth/me` response) in the
@@ -168,6 +174,8 @@ catalogue has no link to ingredient inventory, so it can't expose stock data.
   gets `401 session_expired` and a `Set-Cookie` that removes the cookie. No
   session at all gets `401 not_authenticated`.
 - All `/api/v1` responses carry `Cache-Control: no-store`.
+- There is no sign-up and no delete: administrators create accounts, and
+  deactivate them to remove access.
 
 ### Protecting a new endpoint
 

@@ -29,18 +29,6 @@ from app.services.audit import ClientInfo, record_event
 LAST_SEEN_RESOLUTION = timedelta(seconds=60)
 
 
-class AccountNotFoundError(AppError):
-    status_code = 404
-    code = "account_not_found"
-    detail = "This account is not registered."
-
-
-class WrongPasswordError(NotAuthenticatedError):
-    status_code = 401
-    code = "incorrect_password"
-    detail = "Incorrect password. Please try again."
-
-
 class InvalidCredentialsError(NotAuthenticatedError):
     code = "invalid_credentials"
     detail = "That email and password don't match an account."
@@ -49,6 +37,11 @@ class InvalidCredentialsError(NotAuthenticatedError):
 class AccountDisabledError(ForbiddenError):
     code = "account_disabled"
     detail = "This account has been deactivated. Ask an administrator if you need access again."
+
+
+class GoogleAccountNotStaffError(ForbiddenError):
+    code = "google_account_not_staff"
+    detail = "This Google account isn't linked to an active EcoPantry staff account. Ask an administrator to add you."
 
 
 class AccountLockedError(TooManyRequestsError):
@@ -128,7 +121,8 @@ def authenticate(db: Session, settings: Settings, email: str, password: str, cli
         # The typed email isn't stored: people sometimes type a password into that field.
         record_event(db, "auth.login_failed", client=client, details={"reason": "unknown_account"})
         db.commit()
-        raise AccountNotFoundError()
+        # Same answer as a wrong password, so the response doesn't reveal which emails have accounts.
+        raise InvalidCredentialsError()
 
     if employee.locked_until is not None and employee.locked_until > now:
         record_event(db, "auth.login_blocked", actor=employee, target=employee, client=client, details={"reason": "locked"})
@@ -144,7 +138,7 @@ def authenticate(db: Session, settings: Settings, email: str, password: str, cli
         db.commit()
         if locked:
             raise AccountLockedError()
-        raise WrongPasswordError()
+        raise InvalidCredentialsError()
 
     if not employee.is_active:
         # The password was right, so telling them the account is off reveals nothing to a guesser.
@@ -157,6 +151,30 @@ def authenticate(db: Session, settings: Settings, email: str, password: str, cli
     employee.last_login_at = now
     if password_needs_rehash(employee.password_hash):
         employee.password_hash = hash_password(password)
+    return employee
+
+
+def authenticate_google(db: Session, email: str, client: ClientInfo) -> Employee:
+    """The active employee whose email a verified Google ID token names, or raise.
+
+    Google sign-in never creates or claims accounts: an administrator must have
+    added the employee first. Failures are audited and committed before raising.
+    """
+    employee = db.scalars(select(Employee).where(Employee.email == normalize_email(email))).one_or_none()
+    if employee is None:
+        # As with passwords, the email itself isn't stored for unknown accounts.
+        record_event(db, "auth.google_login_failed", client=client, details={"reason": "unknown_account"})
+        db.commit()
+        raise GoogleAccountNotStaffError()
+    if not employee.is_active:
+        # Google has proved the person owns this email, so telling them the account is off is fine.
+        record_event(
+            db, "auth.google_login_failed", actor=employee, target=employee, client=client,
+            details={"reason": "account_disabled"},
+        )  # fmt: skip
+        db.commit()
+        raise AccountDisabledError()
+    employee.last_login_at = utcnow()
     return employee
 
 

@@ -1,7 +1,7 @@
 # Render Blueprint for the EcoPantry API (FastAPI), free plan.
-# The database is Neon PostgreSQL, not Render. The website is on Vercel and
-# forwards /api/v1/* here (website/frontend/vercel.json), so the browser only
-# ever talks to one origin. Setup steps: docs/DEPLOYMENT.md.
+# The database is Neon PostgreSQL, not Render. The website is on Firebase
+# Hosting and calls this API cross-origin, so CORS_ORIGINS lists its exact
+# origins and the session cookie is SameSite=None. Setup steps: docs/DEPLOYMENT.md.
 #
 # No secrets in this file. DATABASE_URL is marked `sync: false`, so Render asks
 # for it in the dashboard when the Blueprint is created and never reads it from Git.
@@ -29,5 +29,11 @@ services:
       # Neon suspends its compute when idle; give the first connection time to wake it.
       - key: DATABASE_CONNECT_TIMEOUT
         value: "15"
+      # Not secrets. The only browser origins allowed to call the API with the session cookie.
+      - key: CORS_ORIGINS
+        value: https://ecopantry-a7342.web.app,https://ecopantry-a7342.firebaseapp.com
+      # Google sign-in accepts ID tokens for this Firebase project only.
+      - key: FIREBASE_PROJECT_ID
+        value: ecopantry-a7342
       - key: DATABASE_URL
         sync: false

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { Navigate, Outlet, useLocation } from "react-router"
 import { RouteLoading } from "@/components/common/RouteLoading"
 import { useAuth } from "./auth-context"
+import { isRole } from "./roles"
 
 /**
  * Asks the server for the current session on first entry to the portal, then
@@ -19,12 +20,12 @@ export function RequireAuth() {
   if (status !== "ready") return <RouteLoading />
 
   if (!user) {
-    const state = endReason === "session_ended" ? { from: location.pathname } : undefined
+    // Come back to the page they asked for, unless they just chose to sign out.
+    const state = endReason === "signed_out" ? undefined : { from: location.pathname }
     return <Navigate to="/portal/sign-in" replace state={state} />
   }
 
-  const validRoles = ["admin", "shopkeeper", "food_inspector"]
-  if (!validRoles.includes(user.role)) {
+  if (!isRole(user.role)) {
     return <Navigate to="/unauthorized" replace />
   }
 

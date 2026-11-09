@@ -1,314 +1,413 @@
-import { useEffect, useState } from "react"
-import { Users, UserPlus, Shield, Mail, CheckCircle2, AlertCircle, Trash2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { CloudOff, UserPlus, Users } from "lucide-react"
+import { useId, useState, type FormEvent } from "react"
+import { EmptyState } from "@/components/common/EmptyState"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NativeSelect } from "@/components/ui/native-select"
-import { apiRequest, ApiError } from "@/lib/api/client"
+import { getModule } from "@/config/portal-modules"
 import { useAuth } from "@/features/auth/auth-context"
-import { ROLES, ROLE_LABELS, normalizeRole, type Role } from "@/features/auth/roles"
+import { isRole, ROLE_LABELS, ROLES, type Role } from "@/features/auth/roles"
+import {
+  employeesQuery,
+  INITIAL_PASSWORD_MAX,
+  INITIAL_PASSWORD_MIN,
+  useChangeRole,
+  useCreateEmployee,
+  useResetPassword,
+  useSetActive,
+  type AccountFilter,
+  type ManagedEmployee,
+} from "@/features/employees/api"
+import { ApiError } from "@/lib/api/client"
+import { cn } from "@/lib/utils"
 
-interface ManagedUser {
-  id: string
-  email: string
-  name?: string
-  role: string
-  status?: string
-  is_active?: boolean
-  created_at?: string
+function problemText(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.isUnreachable) return "Can't reach the EcoPantry server."
+  if (error instanceof ApiError) return error.message
+  return fallback
 }
 
+const FILTERS: { value: AccountFilter; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+]
+
 export default function UsersPage() {
-  const { user: currentUser } = useAuth()
-  const [users, setUsers] = useState<ManagedUser[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const module = getModule("users")
+  const { isPreview } = useAuth()
+  const [filter, setFilter] = useState<AccountFilter>("active")
+  const [adding, setAdding] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  // Form states for adding a user
-  const [newEmail, setNewEmail] = useState("")
-  const [newName, setNewName] = useState("")
-  const [newRole, setNewRole] = useState<Role>("shopkeeper")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={module.title}
+        description="Staff accounts and what each person can do. Accounts are never deleted: deactivate one to remove access and keep the audit history. If someone signs in with Google and isn't listed here as active, they are turned away; add or reactivate them first."
+        actions={
+          !isPreview && (
+            <Button onClick={() => setAdding((open) => !open)} aria-expanded={adding} className="max-sm:h-10">
+              <UserPlus aria-hidden />
+              Add account
+            </Button>
+          )
+        }
+      />
 
-  const fetchUsers = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const data = await apiRequest<ManagedUser[]>("/employees")
-      setUsers(data)
-    } catch (err: any) {
-      if (err instanceof ApiError) {
-        setError(err.message)
-      } else {
-        setError("Could not load users list.")
-      }
-    } finally {
-      setIsLoading(false)
+      {isPreview ? (
+        <EmptyState
+          icon={Users}
+          title="Needs a real sign-in"
+          description="The development preview has no account, so the server won't share staff records."
+        />
+      ) : (
+        <>
+          {adding && (
+            <AddAccount
+              onDone={(message) => {
+                setAdding(false)
+                setNotice(message)
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          )}
+          {notice && (
+            <p role="status" className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-foreground">
+              {notice}
+            </p>
+          )}
+          <div role="group" aria-label="Show accounts" className="inline-flex rounded-md border p-0.5">
+            {FILTERS.map(({ value, label }) => (
+              <Button
+                key={value}
+                type="button"
+                variant={filter === value ? "default" : "ghost"}
+                aria-pressed={filter === value}
+                onClick={() => {
+                  setFilter(value)
+                  setNotice(null)
+                }}
+                className="max-sm:h-9"
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <AccountList filter={filter} onNotice={setNotice} />
+        </>
+      )}
+    </div>
+  )
+}
+
+function AddAccount({ onDone, onCancel }: { onDone: (message: string) => void; onCancel: () => void }) {
+  const id = useId()
+  const create = useCreateEmployee()
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [role, setRole] = useState<Role>("storekeeper")
+  const [password, setPassword] = useState("")
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setProblem(null)
+    if (!name.trim()) return setProblem("Enter the person's name.")
+    if (!email.trim()) return setProblem("Enter their email address.")
+    if (password && (password.length < INITIAL_PASSWORD_MIN || password.length > INITIAL_PASSWORD_MAX)) {
+      return setProblem(`An initial password needs ${INITIAL_PASSWORD_MIN} to ${INITIAL_PASSWORD_MAX} characters.`)
     }
-  }
-
-  useEffect(() => {
-    void fetchUsers()
-  }, [])
-
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newEmail.trim()) return
-
-    setIsSubmitting(true)
-    setError(null)
-    setSuccessMessage(null)
-
-    try {
-      const created = await apiRequest<ManagedUser>("/employees", {
-        method: "POST",
-        body: {
-          email: newEmail.trim(),
-          name: newName.trim() || newEmail.split("@")[0],
-          role: newRole,
-        },
-      })
-      setUsers((prev) => [created, ...prev])
-      setSuccessMessage(`Account added for ${newEmail} as ${ROLE_LABELS[newRole]}.`)
-      setNewEmail("")
-      setNewName("")
-    } catch (err: any) {
-      console.error("Add user error:", err)
-      setError(err instanceof ApiError ? err.message : "Failed to add user to database.")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleRoleChange = async (userId: string, newAssignedRole: Role) => {
-    setError(null)
-    setSuccessMessage(null)
-
-    try {
-      const updated = await apiRequest<ManagedUser>(`/employees/${userId}`, {
-        method: "PATCH",
-        body: { role: newAssignedRole },
-      })
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, role: updated.role || newAssignedRole } : u))
-      )
-      setSuccessMessage(`Role updated to ${ROLE_LABELS[newAssignedRole]}.`)
-    } catch (err: any) {
-      console.error("Role update failed:", err)
-      setError(
-        err instanceof ApiError
-          ? `Failed to update role: ${err.message}`
-          : "Server rejected role update. Check backend connection."
-      )
-      void fetchUsers()
-    }
-  }
-
-  const handleDeleteUser = async (userToDelete: ManagedUser) => {
-    if (userToDelete.id === currentUser?.id || userToDelete.email === currentUser?.email) {
-      setError("You cannot delete your own active administrator account.")
-      return
-    }
-
-    const confirmDelete = window.confirm(
-      `Are you sure you want to remove ${userToDelete.email}? They will no longer be able to log in.`
+    create.mutate(
+      { name: name.trim(), email: email.trim(), role, ...(password ? { password } : {}) },
+      {
+        onSuccess: (account) => onDone(`Added ${account.name} as ${ROLE_LABELS[account.role]}.`),
+        onError: (error) => setProblem(problemText(error, "The account couldn't be added.")),
+      },
     )
-    if (!confirmDelete) return
-
-    setDeletingId(userToDelete.id)
-    setError(null)
-    setSuccessMessage(null)
-
-    try {
-      await apiRequest(`/employees/${userToDelete.id}`, {
-        method: "DELETE",
-      })
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
-      setSuccessMessage(`Account ${userToDelete.email} removed.`)
-    } catch (err: any) {
-      console.error("Delete user failed:", err)
-      setError(
-        err instanceof ApiError
-          ? `Failed to delete user: ${err.message}`
-          : "Backend error when deleting account."
-      )
-    } finally {
-      setDeletingId(null)
-    }
   }
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Users className="size-6 text-primary" />
-          User & Role Management
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage authorized staff accounts and roles. Unlisted accounts will be redirected to the ordinary user notice.
+    <form onSubmit={submit} noValidate className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
+      <h2 className="font-semibold">New staff account</h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-name`}>Name</Label>
+          <Input id={`${id}-name`} value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-email`}>Email</Label>
+          <Input
+            id={`${id}-email`}
+            type="email"
+            value={email}
+            autoComplete="off"
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-role`}>Role</Label>
+          <NativeSelect id={`${id}-role`} value={role} onChange={(event) => isRole(event.target.value) && setRole(event.target.value)}>
+            {ROLES.map((code) => (
+              <option key={code} value={code}>
+                {ROLE_LABELS[code]}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-password`}>Initial password (optional)</Label>
+          <Input
+            id={`${id}-password`}
+            type="password"
+            value={password}
+            autoComplete="new-password"
+            aria-describedby={`${id}-password-hint`}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <p id={`${id}-password-hint`} className="text-xs text-muted-foreground">
+            {INITIAL_PASSWORD_MIN} to {INITIAL_PASSWORD_MAX} characters. Tell them in person. Leave it empty if they will
+            only use Google sign-in.
+          </p>
+        </div>
+      </div>
+      {problem && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {problem}
         </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={create.isPending} className="max-sm:h-10">
+          {create.isPending ? "Adding…" : "Add account"}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel} className="max-sm:h-10">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function AccountList({ filter, onNotice }: { filter: AccountFilter; onNotice: (message: string | null) => void }) {
+  const accounts = useQuery(employeesQuery(filter))
+  const { user } = useAuth()
+
+  if (accounts.isPending) return <p className="text-sm text-muted-foreground">Loading accounts…</p>
+  if (accounts.isError) {
+    const unreachable = accounts.error instanceof ApiError && accounts.error.isUnreachable
+    return (
+      <EmptyState
+        icon={CloudOff}
+        title={unreachable ? "Can't reach the EcoPantry server" : "Accounts couldn't be loaded"}
+        description={unreachable ? "Check the connection and try again." : problemText(accounts.error, "Try again shortly.")}
+      >
+        <Button variant="outline" onClick={() => void accounts.refetch()} className="max-sm:h-10">
+          Try again
+        </Button>
+      </EmptyState>
+    )
+  }
+  if (accounts.data.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title={filter === "active" ? "No active accounts" : "No inactive accounts"}
+        description={filter === "inactive" ? "Deactivated accounts appear here and can be reactivated." : undefined}
+      />
+    )
+  }
+
+  return (
+    <ul aria-label={`${filter === "active" ? "Active" : "Inactive"} accounts`} className="divide-y rounded-lg border bg-card">
+      {accounts.data.map((account) => (
+        <AccountRow key={account.id} account={account} isSelf={account.id === user?.id} onNotice={onNotice} />
+      ))}
+    </ul>
+  )
+}
+
+type Panel = "deactivate" | "reactivate" | "password" | null
+
+function AccountRow({
+  account,
+  isSelf,
+  onNotice,
+}: {
+  account: ManagedEmployee
+  isSelf: boolean
+  onNotice: (message: string | null) => void
+}) {
+  const id = useId()
+  const changeRole = useChangeRole()
+  const setActive = useSetActive()
+  const resetPassword = useResetPassword()
+  const [panel, setPanel] = useState<Panel>(null)
+  const [password, setPassword] = useState("")
+  const [problem, setProblem] = useState<string | null>(null)
+  const active = account.status === "active"
+
+  const open = (next: Panel) => {
+    setPanel(next)
+    setPassword("")
+    setProblem(null)
+    onNotice(null)
+  }
+
+  const onRole = (value: string) => {
+    if (!isRole(value) || value === account.role) return
+    setProblem(null)
+    onNotice(null)
+    changeRole.mutate(
+      { id: account.id, role: value },
+      {
+        onSuccess: () => onNotice(`${account.name} is now ${ROLE_LABELS[value]}. They were signed out everywhere.`),
+        onError: (error) => setProblem(problemText(error, "The role couldn't be changed.")),
+      },
+    )
+  }
+
+  const confirmActive = () => {
+    setActive.mutate(
+      { id: account.id, active: !active },
+      {
+        onSuccess: () => {
+          setPanel(null)
+          onNotice(active ? `${account.name} was deactivated and signed out everywhere.` : `${account.name} can sign in again.`)
+        },
+        onError: (error) => setProblem(problemText(error, "The change couldn't be saved.")),
+      },
+    )
+  }
+
+  const submitPassword = (event: FormEvent) => {
+    event.preventDefault()
+    setProblem(null)
+    if (password.length < INITIAL_PASSWORD_MIN || password.length > INITIAL_PASSWORD_MAX) {
+      return setProblem(`A password needs ${INITIAL_PASSWORD_MIN} to ${INITIAL_PASSWORD_MAX} characters.`)
+    }
+    resetPassword.mutate(
+      { id: account.id, password },
+      {
+        onSuccess: () => {
+          setPanel(null)
+          setPassword("")
+          onNotice(`New password set for ${account.name}. They were signed out everywhere.`)
+        },
+        onError: (error) => setProblem(problemText(error, "The password couldn't be changed.")),
+      },
+    )
+  }
+
+  return (
+    <li className="space-y-3 p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 font-medium">
+            <span className="truncate">{account.name}</span>
+            {isSelf && <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">You</span>}
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-xs font-normal",
+                active ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {active ? "Active" : "Inactive"}
+            </span>
+          </p>
+          <p className="truncate text-sm text-muted-foreground">{account.email}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor={`${id}-role`} className="sr-only">
+            Role for {account.email}
+          </Label>
+          <NativeSelect
+            id={`${id}-role`}
+            value={account.role}
+            disabled={isSelf || !active || changeRole.isPending}
+            onChange={(event) => onRole(event.target.value)}
+            className="w-44 max-sm:h-10"
+            title={isSelf ? "You can't change your own role" : undefined}
+          >
+            {ROLES.map((code) => (
+              <option key={code} value={code}>
+                {ROLE_LABELS[code]}
+              </option>
+            ))}
+          </NativeSelect>
+          {active && (
+            <Button variant="outline" onClick={() => open("password")} aria-expanded={panel === "password"} className="max-sm:h-10">
+              Reset password
+            </Button>
+          )}
+          {!isSelf && (
+            <Button
+              variant={active ? "destructive" : "outline"}
+              onClick={() => open(active ? "deactivate" : "reactivate")}
+              aria-expanded={panel === "deactivate" || panel === "reactivate"}
+              className="max-sm:h-10"
+            >
+              {active ? "Deactivate" : "Reactivate"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="size-5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-          <CheckCircle2 className="size-5 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
-
-      {/* Add User Card */}
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground mb-4">
-          <UserPlus className="size-5 text-primary" />
-          Add Authorized Account
-        </h2>
-        <form onSubmit={handleAddUser} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="add-email">Email Address</Label>
-            <div className="relative">
-              <Mail className="size-4 absolute left-3 top-3 text-muted-foreground" />
-              <Input
-                id="add-email"
-                type="email"
-                required
-                placeholder="staff@bakery.com"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="add-name">Display Name (Optional)</Label>
-            <Input
-              id="add-name"
-              placeholder="e.g. Sarah Connor"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="add-role">Assigned Role</Label>
-            <NativeSelect
-              id="add-role"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value as Role)}
+      {(panel === "deactivate" || panel === "reactivate") && (
+        <div className="flex flex-col gap-2 rounded-md bg-muted/60 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            {panel === "deactivate"
+              ? `Deactivate ${account.name}? They are signed out everywhere and can't sign in until reactivated.`
+              : `Reactivate ${account.name}? They will be able to sign in again.`}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant={panel === "deactivate" ? "destructive" : "default"}
+              disabled={setActive.isPending}
+              onClick={confirmActive}
+              className="max-sm:h-10"
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </NativeSelect>
+              {panel === "deactivate" ? "Yes, deactivate" : "Yes, reactivate"}
+            </Button>
+            <Button variant="ghost" onClick={() => open(null)} className="max-sm:h-10">
+              Cancel
+            </Button>
           </div>
+        </div>
+      )}
 
-          <div className="sm:col-span-3 flex justify-end pt-2">
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-              {isSubmitting ? "Adding..." : "Authorize Account"}
+      {panel === "password" && (
+        <form onSubmit={submitPassword} noValidate className="space-y-2 rounded-md bg-muted/60 p-3">
+          <Label htmlFor={`${id}-password`}>New password for {account.name}</Label>
+          <Input
+            id={`${id}-password`}
+            type="password"
+            value={password}
+            autoComplete="new-password"
+            onChange={(event) => setPassword(event.target.value)}
+            className="max-w-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            {INITIAL_PASSWORD_MIN} to {INITIAL_PASSWORD_MAX} characters. Tell them in person. This signs them out everywhere.
+          </p>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={resetPassword.isPending} className="max-sm:h-10">
+              {resetPassword.isPending ? "Saving…" : "Set password"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => open(null)} className="max-sm:h-10">
+              Cancel
             </Button>
           </div>
         </form>
-      </div>
+      )}
 
-      {/* Users List Table */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-6 border-b flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground">
-            <Shield className="size-5 text-primary" />
-            Authorized Staff List
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            {users.length} {users.length === 1 ? "account" : "accounts"}
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/50 border-b text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-6 py-3">User</th>
-                <th className="px-6 py-3">Email</th>
-                <th className="px-6 py-3">Role</th>
-                <th className="px-6 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {users.map((item) => {
-                const isSelf = item.id === currentUser?.id || item.email === currentUser?.email
-                const normalizedCurrentRole = normalizeRole(item.role)
-
-                return (
-                  <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-6 py-4 font-medium text-foreground">
-                      <div className="flex items-center gap-2">
-                        {item.name || "Staff Member"}
-                        {isSelf && (
-                          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-normal">
-                            You
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground">{item.email}</td>
-                    <td className="px-6 py-4">
-                      {isSelf ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
-                          {ROLE_LABELS[normalizedCurrentRole]}
-                        </span>
-                      ) : (
-                        <NativeSelect
-                          aria-label={`Change role for ${item.email}`}
-                          value={normalizedCurrentRole}
-                          onChange={(e) => handleRoleChange(item.id, e.target.value as Role)}
-                          className="text-xs h-8 py-1 max-w-[160px]"
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {!isSelf && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteUser(item)}
-                          disabled={deletingId === item.id}
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          title="Delete user"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              {users.length === 0 && !isLoading && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
-                    No authorized accounts found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      {problem && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {problem}
+        </p>
+      )}
+    </li>
   )
 }

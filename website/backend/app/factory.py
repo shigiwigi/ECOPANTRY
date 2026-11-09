@@ -44,21 +44,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.database = database
 
-    # Handle cross-origin requests from Firebase and local dev
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "https://ecopantry-a7342.web.app",
-            "https://ecopantry-a7342.firebaseapp.com",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     register_exception_handlers(app)
     app.add_middleware(NoStoreMiddleware, prefix=API_V1_PREFIX)
+    # Added last, so it is the outermost middleware: preflights are answered before anything
+    # else runs, and error responses from the handlers above carry the same CORS headers.
+    # Exact origins from settings only (the website on Firebase Hosting calls the API
+    # cross-origin; see docs/DEPLOYMENT.md). Other origins get no CORS headers at all.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
+        max_age=600,
+    )
     app.include_router(api_router, prefix=API_V1_PREFIX)
     return app

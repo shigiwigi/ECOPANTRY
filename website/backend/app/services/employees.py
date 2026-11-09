@@ -1,9 +1,11 @@
-"""Staff account lifecycle: create, deactivate, reactivate, reset password.
+"""Staff account lifecycle: create, change role, deactivate, reactivate, reset password.
 
-Used by the admin API and by `python -m app.cli`. Callers commit.
+Used by the admin API and by `python -m app.cli`. Callers commit. Employees are
+never deleted (audit history keeps its actor); deactivation removes access.
 """
 
 import re
+import secrets
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -38,11 +40,10 @@ def _validated_name(name: str) -> str:
     return cleaned
 
 
-def get_role(db: Session, code: RoleCode | str) -> Role:
-    role_code_str = code.value if hasattr(code, "value") else str(code)
-    role = db.scalars(select(Role).where(Role.code == role_code_str)).one_or_none()
-    if role is None:
-        raise RoleNotFoundError(role_code_str)
+def get_role(db: Session, code: RoleCode) -> Role:
+    role = db.scalars(select(Role).where(Role.code == code.value)).one_or_none()
+    if role is None:  # Only if migrations haven't run.
+        raise RuntimeError(f"Role {code.value!r} is missing; run `alembic upgrade head`.")
     return role
 
 
@@ -51,6 +52,14 @@ def get_employee(db: Session, employee_id: object) -> Employee:
     if employee is None:
         raise NotFoundError("That staff account doesn't exist.")
     return employee
+
+
+def list_employees(db: Session, *, active: bool | None = None) -> list[Employee]:
+    """All staff accounts, or only active (True) or only deactivated (False) ones, by name."""
+    statement = select(Employee).order_by(Employee.full_name, Employee.email)
+    if active is not None:
+        statement = statement.where(Employee.status == ("active" if active else "disabled"))
+    return list(db.scalars(statement))
 
 
 def find_by_email(db: Session, email: str) -> Employee | None:
@@ -73,14 +82,21 @@ def create_employee(
     email: str,
     full_name: str,
     role: RoleCode,
-    password: str,
+    password: str | None,
     created_by: Employee | None,
     actor_type: ActorType = "employee",
     client: ClientInfo = CLI,
 ) -> Employee:
+    """Create an active account.
+
+    Without `password` the account can only sign in with Google (same email)
+    until an administrator sets a password: it gets the hash of a random
+    secret that is thrown away, so no typed password matches it.
+    """
     email = _validated_email(email)
     full_name = _validated_name(full_name)
-    check_new_password(password, email)
+    if password is not None:
+        check_new_password(password, email)
     if find_by_email(db, email) is not None:
         raise ConflictError("A staff account with that email already exists.")
 
@@ -88,7 +104,7 @@ def create_employee(
         email=email,
         full_name=full_name,
         role=get_role(db, role),
-        password_hash=hash_password(password),
+        password_hash=hash_password(password if password is not None else secrets.token_urlsafe(32)),
         password_changed_at=utcnow(),
         created_by_id=created_by.id if created_by else None,
     )
@@ -96,7 +112,36 @@ def create_employee(
     db.flush()
     record_event(
         db, "employee.created", actor=created_by, actor_type=actor_type, target=employee, client=client,
-        details={"role": role.value},
+        details={"role": role.value, "password_set": password is not None},
+    )  # fmt: skip
+    return employee
+
+
+def change_role(
+    db: Session, employee: Employee, role: RoleCode, *, by: Employee | None, actor_type: ActorType = "employee",
+    client: ClientInfo = CLI,
+) -> Employee:  # fmt: skip
+    """Give an employee another role and sign them out everywhere, so they start again with the new role.
+
+    Refuses changing your own role and demoting the last active administrator,
+    so the portal can't lock itself out (the same rules as deactivation).
+    """
+    old = RoleCode(employee.role.code)
+    if old == role:
+        return employee
+    if by is not None and by.id == employee.id:
+        raise ConflictError("You can't change your own role. Ask another administrator.")
+    if old == RoleCode.ADMIN and employee.is_active and active_admin_count(db) <= 1:
+        raise ConflictError("This is the only active administrator. Add another administrator first.")
+
+    employee.role = get_role(db, role)
+    # Permissions are read from the role on every request, so the change applies at once; ending
+    # the sessions also makes the portal load the new role. "replaced" is the closest reason the
+    # auth_sessions CHECK constraint allows until a migration adds "role_changed".
+    revoked = revoke_all_sessions(db, employee.id, "replaced")
+    record_event(
+        db, "employee.role_changed", actor=by, actor_type=actor_type, target=employee, client=client,
+        details={"from": old.value, "to": role.value, "sessions_revoked": revoked},
     )  # fmt: skip
     return employee
 

@@ -37,13 +37,13 @@ export default function UnauthorizedUserPage() {
 
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              No permissions for ordinary users
+              This account isn't linked to a staff account
             </h1>
             <p className="text-sm text-muted-foreground">
               {user?.email ? (
                 <>Signed in as <strong className="text-foreground">{user.email}</strong>.<br /></>
               ) : null}
-              Access to the EcoPantry Management Portal is restricted to authorized staff members (Administrators, Shopkeepers, and Food Inspectors).
+              This Google account isn't linked to an active EcoPantry staff account, so it can't open the management portal. Ask an administrator to add or reactivate your account.
             </p>
           </div>
 
@@ -53,7 +53,7 @@ export default function UnauthorizedUserPage() {
               EcoPantry tracks bakery batches, expiration audits, temperature monitoring, and inventory movements to eliminate waste and uphold fresh food safety.
             </p>
             <p>
-              If you believe you should have access, contact your bakery administrator to authorize your email address.
+              If you should have access, ask your bakery administrator to add this email address as a staff account.
             </p>
           </div>
 

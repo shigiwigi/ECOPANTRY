@@ -26,7 +26,7 @@ export interface AuthContextValue {
   /** Ask the server whether the browser has a session. */
   checkSession: (force?: boolean) => void
   /** Directly consumes a SessionResponse from the server and updates state immediately. */
-  setSession?: (response: unknown) => Promise<StaffUser>
+  setSession: (response: unknown) => Promise<StaffUser>
   signIn: (values: SignInValues) => Promise<StaffUser>
   /** Ends the session on the server. Rejects with an ApiError if the server can't be reached. */
   signOut: () => Promise<void>

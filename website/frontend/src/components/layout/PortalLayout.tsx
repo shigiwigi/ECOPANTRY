@@ -1,4 +1,4 @@
-import { Bell, LogOut } from "lucide-react"
+import { LogOut, ScanLine } from "lucide-react"
 import { useRef, useState } from "react"
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import { DevPreviewBanner } from "@/components/common/DevPreviewBanner"
@@ -22,6 +22,7 @@ import {
   modulesForRole,
   PORTAL_MODULES,
   portalHref,
+  SCANNER_MODULE_ID,
   type PortalModule,
 } from "@/config/portal-modules"
 import { useAuth } from "@/features/auth/auth-context"
@@ -66,13 +67,13 @@ export function PortalLayout() {
   if (!user) return null
   const modules = modulesForRole(user.role)
   const activeModule = currentModule(pathname)
-  const alertsModule = modules.find((module) => module.id === "alerts")
+  const scanner = modules.find((module) => module.id === SCANNER_MODULE_ID)
 
   const handleSignOut = async () => {
     setSignOutFailed(false)
     try {
-      navigate("/", { replace: true })
       await signOut()
+      navigate("/portal/sign-in", { replace: true })
     } catch {
       setSignOutFailed(true)
     }
@@ -111,15 +112,15 @@ export function PortalLayout() {
               {activeModule?.label ?? "Portal"}
             </p>
 
-            {alertsModule && (
+            {scanner && (
               <Button
                 asChild
                 variant="outline"
                 className="h-11 gap-2 px-3 max-sm:w-11 max-sm:px-0 aria-[current=page]:border-primary aria-[current=page]:text-primary lg:h-9"
               >
-                <NavLink to={portalHref(alertsModule)} aria-label="Open alerts">
-                  <Bell className="size-[18px]" aria-hidden />
-                  <span className="max-sm:sr-only">Alerts</span>
+                <NavLink to={portalHref(scanner)} aria-label="Scan a QR label">
+                  <ScanLine className="size-[18px]" aria-hidden />
+                  <span className="max-sm:sr-only">Scan</span>
                 </NavLink>
               </Button>
             )}
