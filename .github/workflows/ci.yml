@@ -1,0 +1,263 @@
+# Continuous integration for EcoPantry: backend, frontend, full-stack browser tests and firmware.
+#
+# Every job runs the same commands as CLAUDE.md's "Commands" section, so a failure here can
+# be reproduced locally with those commands.
+#
+# Secrets: none. The PostgreSQL password below is a throwaway value that only exists inside
+# the job's service container, which is deleted when the job ends. Never add real
+# credentials (Neon, Render, Firebase) to this file.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [development, main]
+  push:
+    branches: [development, main]
+
+# A newer push to the same branch or pull request cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Matches PYTHON_VERSION in render.yaml.
+  PYTHON_VERSION: "3.14.3"
+  # package.json "engines" asks for >=22.22.0.
+  NODE_VERSION: "22.22"
+  # CI-only database on the job's postgres service. Not a secret.
+  POSTGRES_USER: ecopantry
+  POSTGRES_PASSWORD: ci-throwaway-password
+  POSTGRES_DB: ecopantry
+
+jobs:
+  backend:
+    name: Backend (pytest, migrations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ecopantry
+          POSTGRES_PASSWORD: ci-throwaway-password
+          POSTGRES_DB: ecopantry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -p 5432 -U ecopantry -d ecopantry"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: website/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: website/backend/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+
+      # The same git-ignored .env a developer has, pointing at the service container.
+      # Tests create their own throwaway ecopantry_test_* databases on this server.
+      - name: Write CI settings
+        run: |
+          printf 'ENVIRONMENT=test\nDATABASE_URL=postgresql+psycopg://%s:%s@127.0.0.1:5432/%s\n' \
+            "$POSTGRES_USER" "$POSTGRES_PASSWORD" "$POSTGRES_DB" > .env
+
+      - name: pytest
+        run: .venv/bin/pytest
+
+      # A database no test has touched: every migration must apply from empty, and the
+      # models must match the migrated schema (no missing `alembic revision --autogenerate`).
+      - name: Migrations on a fresh database
+        env:
+          PGPASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          DATABASE_URL: postgresql+psycopg://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@127.0.0.1:5432/ecopantry_ci_migrations
+        run: |
+          psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE ecopantry_ci_migrations'
+          .venv/bin/alembic upgrade head
+          .venv/bin/alembic check
+
+  frontend:
+    name: Frontend (lint, unit, build, e2e smoke)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: website/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The development-only portal preview must be stripped from production builds.
+      - name: Production build has no portal preview
+        run: |
+          if grep -r "Development preview" dist/; then
+            echo "::error::dist/ contains the development-only portal preview."
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Needs no backend: the dev server's API proxy points at a closed port.
+      - name: E2E smoke (Chromium, 375px + 1440px, light + dark)
+        run: npm run test:e2e
+
+      - name: Upload e2e screenshots and results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e
+          path: |
+            website/frontend/e2e/.screenshots/
+            website/frontend/e2e/.results/
+            website/frontend/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Real sign-in through the Vite proxy to FastAPI and PostgreSQL. Its own job (and check
+  # name) so branch protection can make it required separately once it is stable.
+  fullstack:
+    name: Full-stack e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ecopantry
+          POSTGRES_PASSWORD: ci-throwaway-password
+          POSTGRES_DB: ecopantry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -p 5432 -U ecopantry -d ecopantry"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: website/backend/pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      # playwright.fullstack.config.ts starts ../backend/.venv/bin/python, so the venv
+      # must live at website/backend/.venv, as it does locally.
+      - name: Set up backend
+        working-directory: website/backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+          printf 'ENVIRONMENT=test\nDATABASE_URL=postgresql+psycopg://%s:%s@127.0.0.1:5432/%s\n' \
+            "$POSTGRES_USER" "$POSTGRES_PASSWORD" "$POSTGRES_DB" > .env
+
+      - name: Set up frontend
+        working-directory: website/frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # scripts/e2e_server.py creates (and drops) ecopantry_test_e2e on the service.
+      - name: Full-stack e2e
+        working-directory: website/frontend
+        run: npm run test:e2e:fullstack
+
+      - name: Upload full-stack results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fullstack-e2e
+          path: |
+            website/frontend/e2e/.results-fullstack/
+            website/frontend/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  firmware:
+    name: Firmware (native tests, ESP32 build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: software/firmware/inventory-esp32
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Platforms, toolchains and libraries. platformio.ini pins their versions.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('software/firmware/inventory-esp32/platformio.ini') }}
+          restore-keys: platformio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # Older firmware needs a git-ignored include/secrets.h to build (scripts/check_secrets.py).
+      # CI builds with the example's placeholder values; it never flashes a board. Firmware
+      # that no longer needs secrets.h skips this step's copy.
+      - name: Placeholder secrets.h (only if the build needs one)
+        run: |
+          needs_secrets=false
+          if grep -qs "check_secrets" platformio.ini \
+            || grep -rqs --include='*.h' --include='*.cpp' --include='*.ino' '#include[[:space:]]*"secrets.h"' src lib include; then
+            needs_secrets=true
+          fi
+          if [ "$needs_secrets" = true ] && [ ! -f include/secrets.h ] && [ -f include/secrets.example.h ]; then
+            cp include/secrets.example.h include/secrets.h
+            echo "Copied include/secrets.example.h to include/secrets.h (placeholders only)."
+          else
+            echo "No placeholder secrets.h needed."
+          fi
+
+      - name: Native unit tests
+        run: pio test -e native
+
+      - name: Build for ESP32
+        run: pio run -e esp32dev
