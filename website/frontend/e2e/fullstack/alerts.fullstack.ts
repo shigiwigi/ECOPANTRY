@@ -120,4 +120,10 @@ test("the waste bin alert opens at 2 kg, can be acknowledged, and clears below 1
   await page.goto("/portal/alerts")
   await expect(page.getByRole("heading", { name: "Alert limits" })).toBeVisible()
   await expect(page.getByText(/at or above 2\.00 kg, clears below 1\.50 kg/)).toBeVisible()
+
+  // Leave nothing live behind. The dashboard shows one station, the first live one, and this suite shares its
+  // database with the sensors spec, which expects its own station there.
+  await page.goto("/portal/devices")
+  await page.getByRole("button", { name: `Stop live session for ${name}` }).click()
+  await expect(page.getByText(`${name} will pause on its next upload.`)).toBeVisible()
 })
