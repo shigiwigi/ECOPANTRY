@@ -455,7 +455,7 @@ test.describe("interactions", () => {
     await page.setViewportSize({ width: 375, height: 812 })
     await page.goto("/portal")
     await page.getByRole("button", { name: "More modules" }).click()
-    await page.getByRole("dialog").getByRole("link", { name: "Suppliers" }).click()
+    await page.getByRole("dialog").getByRole("link", { name: "Reports" }).click()
     await expect(page.getByRole("dialog")).toBeHidden()
     await expect(page.locator("#main-content")).toBeFocused()
   })
