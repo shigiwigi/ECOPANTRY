@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.auth.permissions import RoleCode
 from app.core.config import BACKEND_DIR, Settings
 from app.factory import create_app
+from app.models import Base
 from app.models.auth import Employee
 from app.services import employees as employee_service
 
@@ -106,19 +107,44 @@ def auth_settings(migrated_database_url: str) -> Settings:
     return make_settings(database_url=migrated_database_url, database_connect_timeout=5)
 
 
+# Tables whose migration seed rows must survive the per-test TRUNCATE below (it has to include them
+# because they reference truncated tables). Roles, permissions and units are never truncated.
+SEEDED_TABLES = ("thresholds",)
+
+
+@pytest.fixture(scope="session")
+def migration_seed(migrated_database_url: str) -> dict[str, list[dict[str, object]]]:
+    """The seed rows the migrations wrote, read once before any test changes them."""
+    engine = create_engine(migrated_database_url)
+    try:
+        with engine.connect() as connection:
+            return {
+                table: [dict(row) for row in connection.execute(text(f"SELECT * FROM {table}")).mappings()]
+                for table in SEEDED_TABLES
+            }
+    finally:
+        engine.dispose()
+
+
 @pytest.fixture
-def auth_app(auth_settings: Settings) -> Iterator[FastAPI]:
+def auth_app(auth_settings: Settings, migration_seed: dict[str, list[dict[str, object]]]) -> Iterator[FastAPI]:
     application = create_app(auth_settings)
     yield application
-    # Each test starts with no accounts or catalogue entries. Roles and permissions (migration seed) stay.
+    # Each test starts with no accounts, records or catalogue entries. Roles, permissions, units and the
+    # seeded thresholds (migration seed) stay.
     with application.state.database.engine.begin() as connection:
         connection.execute(
             text(
                 "TRUNCATE audit_events, auth_sessions, catalogue_products, catalogue_categories, "
-                "sensor_readings, rfid_scans, rfid_cards, device_live_usage, devices, employees "
+                "sensor_readings, rfid_scans, rfid_cards, device_live_usage, devices, employees, "
+                "ingredients, storage_areas, batches, stock_movements, thresholds, alerts, "
+                "waste_records, ph_records, enquiries "
                 "RESTART IDENTITY"
             )
         )
+        for table, rows in migration_seed.items():
+            if rows:
+                connection.execute(Base.metadata.tables[table].insert(), rows)
     application.state.database.dispose()
 
 

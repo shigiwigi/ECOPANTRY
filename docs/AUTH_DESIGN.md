@@ -153,15 +153,12 @@ which only reads). The table is seeded by the migration and mirrored in
 | `batches.manage` | ✓ | ✓ | |
 | `expiry.view` | ✓ | ✓ | ✓ |
 | `qr_labels.manage` | ✓ | ✓ | |
-| `suppliers.view` | ✓ | ✓ | ✓ |
-| `suppliers.manage` | ✓ | ✓ | |
 | `environment.view` | ✓ | ✓ | ✓ |
 | `thresholds.manage` | ✓ | | |
 | `ph.view` | ✓ | ✓ | ✓ |
 | `ph.record` | ✓ | ✓ | |
 | `waste.view` | ✓ | ✓ | ✓ |
 | `waste.record` | ✓ | ✓ | |
-| `camera.view` | ✓ | | ✓ |
 | `employees.view` | ✓ | | ✓ |
 | `employees.manage` | ✓ | | |
 | `reports.view` | ✓ | | ✓ |
@@ -170,8 +167,9 @@ which only reads). The table is seeded by the migration and mirrored in
 | `devices.view` | ✓ | | |
 | `devices.manage` | ✓ | | |
 | `catalogue.manage` | ✓ | | |
+| `enquiries.view` | ✓ | | |
 
-`catalogue.manage` was added by migration `0003` with the public catalogue.
+`catalogue.manage` was added by migration `0003` with the public catalogue. Migration `0005` removed `suppliers.view`, `suppliers.manage` and `camera.view` (inventory is in-shop only: no suppliers; the camera is out of scope). Migration `0009` added `enquiries.view` (Administrator only: contact-form messages are personal data).
 
 The `.view` rows match the role lists in the frontend's
 `src/config/portal-modules.ts`. Most permissions protect endpoints that don't
