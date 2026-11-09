@@ -3,8 +3,10 @@
 //   Starting --(server says live)--> Live --(timer runs out / 409)--> Paused
 //   Starting --(5 failed tries / not live)--> Paused
 //   Paused   --(granted card tap / boot session again)--> Live
-//   any      --(401: token revoked or device disabled)--> Locked   (until reboot)
+//   any      --(401: token revoked or device disabled)--> Locked
+//   Locked   --(token saved on the setup page / reboot)--> Starting
 //
+// A 401 also opens the setup hotspot (wifi_setup.h) so a new token can be entered there.
 // While Paused or Locked the station makes no upload requests at all, so the backend
 // and the database can sleep. Only a card tap (or a reboot) talks to the server again.
 // The server owns the session length; the station also enforces kMaxSessionMs locally
@@ -33,8 +35,11 @@ class LiveSession {
   void onStatus(bool live, uint32_t remainingSeconds, bool budgetExhausted, uint32_t nowMs);
   // 409 session_not_live: stop uploading now.
   void onNotLive();
-  // 401: the token was revoked or the device disabled. Stays locked until reboot.
+  // 401: the token was revoked or the device disabled. Stays locked until a token is saved
+  // on the setup page (onTokenSaved) or the station reboots.
   void onUnauthorized();
+  // Settings were saved on the setup page: unlock and ask for a boot session again.
+  void onTokenSaved();
   // The boot-session request failed (network or 5xx). Gives up after a few tries.
   void onBootAttemptFailed();
   // Ask for a boot session again (serial `session` command). Ignored while Locked.

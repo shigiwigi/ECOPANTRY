@@ -181,6 +181,17 @@ void test_server_refusal_pauses_and_401_locks_for_good() {
   TEST_ASSERT_EQUAL(SessionState::Locked, session.state());
 }
 
+void test_saving_a_token_unlocks_and_asks_for_a_boot_session() {
+  LiveSession session(60 * 60 * 1000);
+  session.onTokenSaved();  // ignored unless locked
+  TEST_ASSERT_EQUAL(SessionState::Starting, session.state());
+  session.onStatus(true, 900, true, 0);
+  session.onUnauthorized();
+  session.onTokenSaved();
+  TEST_ASSERT_TRUE(session.wantsBootSession());
+  TEST_ASSERT_FALSE(session.budgetExhausted());
+}
+
 void test_boot_session_gives_up_after_repeated_failures() {
   LiveSession session(60 * 60 * 1000, 3);
   session.onBootAttemptFailed();
@@ -226,6 +237,7 @@ int main(int, char**) {
   RUN_TEST(test_session_survives_millis_wrapping);
   RUN_TEST(test_session_is_capped_locally);
   RUN_TEST(test_server_refusal_pauses_and_401_locks_for_good);
+  RUN_TEST(test_saving_a_token_unlocks_and_asks_for_a_boot_session);
   RUN_TEST(test_boot_session_gives_up_after_repeated_failures);
   RUN_TEST(test_not_live_answer_pauses_and_keeps_budget_flag);
   RUN_TEST(test_backoff_doubles_up_to_the_cap);

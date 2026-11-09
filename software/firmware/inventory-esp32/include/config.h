@@ -7,7 +7,13 @@
 #include <cstddef>
 #include <cstdint>
 
-#define FIRMWARE_VERSION "0.1.0"
+#define FIRMWARE_VERSION "0.2.0"
+
+// Plain-http API addresses (a laptop on the LAN) are refused unless the build sets this to 1
+// (the esp32dev-lan environment). Never ship it on.
+#ifndef ECOPANTRY_ALLOW_HTTP
+#define ECOPANTRY_ALLOW_HTTP 0
+#endif
 
 namespace config {
 
@@ -36,6 +42,10 @@ constexpr uint8_t kRedLedPin = 26;
 constexpr uint8_t kBuzzerPin = 27;
 constexpr bool kBuzzerActiveLow = true;  // the sketch's buzzer is on when the pin is LOW
 
+// The DevKit's BOOT button. Held 5 s while running, it forgets the WiFi and opens the setup
+// hotspot. (Held while powering on or pressing EN, it puts the ESP32 in flashing mode instead.)
+constexpr uint8_t kBootButtonPin = 0;
+
 // --- timing (ms) -------------------------------------------------------------
 constexpr uint32_t kDhtIntervalMs = 2000;        // DHT11 can't be read faster than ~1 Hz
 constexpr uint32_t kDhtStaleMs = 3 * kDhtIntervalMs;
@@ -54,8 +64,27 @@ constexpr uint32_t kHttpTimeoutMs = 15000;
 constexpr uint32_t kMaxSessionMs = 60UL * 60UL * 1000UL;  // local cap, whatever the server says
 constexpr uint32_t kRetryMinMs = 5000;
 constexpr uint32_t kRetryMaxMs = 60000;
-constexpr uint32_t kWifiRetryMinMs = 2000;
-constexpr uint32_t kWifiRetryMaxMs = 30000;
+
+// WiFi and the setup hotspot (docs/HARDWARE_INTEGRATION.md). The WiFi details, API address
+// and device token are entered on the hotspot's page and saved in flash, never compiled in.
+constexpr uint32_t kWifiFailOpenHotspotMs = 2UL * 60UL * 1000UL;  // saved WiFi failing this long opens the hotspot
+constexpr uint32_t kWifiRetryMs = 15000;                          // between join attempts
+constexpr uint32_t kWifiRetryWithHotspotMs = 30000;               // between join attempts while the hotspot is open
+constexpr uint32_t kSetupIdleCloseMs = 10UL * 60UL * 1000UL;      // `setup` with nothing saved closes after this
+constexpr uint32_t kBootHoldMs = 5000;
+constexpr uint8_t kHotspotMaxClients = 2;
+constexpr uint32_t kScreenPageMs = 3000;  // LCD pages rotate this often (setup, bin warning)
+constexpr bool kAllowHttpApi = ECOPANTRY_ALLOW_HTTP != 0;
+// Only a suggestion pre-filled on the setup page; nothing is used until it is saved there.
+constexpr const char* kSuggestedApiUrl = "https://ecopantry-api.onrender.com/api/v1";
+
+// Waste bin "nearly full" warning, on the station itself (LCD, red LED, one short beep).
+// Works offline and outside live sessions. Hysteresis: on at 2.0 kg, off below 1.5 kg.
+constexpr float kBinFullGrams = 2000.0f;
+constexpr float kBinClearGrams = 1500.0f;
+constexpr uint32_t kBinConfirmMs = 5000;                  // must stay past a threshold this long
+constexpr uint32_t kBinBeepGapMs = 10UL * 60UL * 1000UL;  // at most one beep per 10 minutes
+constexpr uint32_t kLoadCellStaleMs = 1000;               // no HX711 sample this long: load_cell_ok false
 
 // About 10 minutes of readings at 10 s, kept while the network is down. The API takes 50 per request.
 constexpr size_t kReadingBufferSize = 60;
