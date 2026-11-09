@@ -10,12 +10,36 @@ How the single-ESP32 inventory station reaches the portal, and how it avoids kee
 ```
 ESP32 station ──HTTPS + Bearer device token──▶ FastAPI (Render) ──▶ PostgreSQL (Neon)
                                                      ▲
-Portal (Vercel) ──same-origin /api/v1, staff session─┘   polls every 2 s while a page is open
+Portal (Firebase Hosting) ──HTTPS + CORS, staff session─┘   polls every 2 s while a page is open
 ```
 
 - **The station never connects to the database.** The Neon URL is a backend secret only (`DATABASE_URL` on Render). It must never appear in firmware, `secrets.h` or committed files.
-- **The station calls Render directly** (`https://<service>.onrender.com/api/v1`), not through Vercel. It is not a browser, so it needs no CORS and no cookies.
-- **Real time in the portal is polling**, not websockets or server-sent events. TanStack Query refetches every 2 s and stops while the tab is hidden. Vercel rewrites and Render's free tier don't hold long-lived streams reliably, and readings only arrive every 3 s anyway.
+- **The station calls Render directly** (`https://ecopantry-api.onrender.com/api/v1`), not through the website. It is not a browser, so it needs no CORS and no cookies.
+- **Real time in the portal is polling**, not websockets or server-sent events. TanStack Query refetches every 2 s and stops while the tab is hidden. Render's free tier doesn't hold long-lived streams reliably, and readings only arrive every 3 s anyway.
+
+## Entering the WiFi and API details (setup hotspot): planned, not built
+
+Today the WiFi details, API address and device token are compiled in from the git-ignored `include/secrets.h` (see the firmware README). The setup hotspot below is the agreed design that will replace it. **None of it is in the firmware yet.**
+
+The WiFi name and password, the API address and the device token are **not compiled into the firmware**. They are entered on a setup page that the station serves from its own hotspot, and saved in the board's flash (NVS). Nothing secret is kept in a file or in Git, one firmware build works for any network, and moving between a laptop and Render needs no reflash.
+
+```
+Power on ─► details saved? ──no──► SETUP: hotspot "EcoPantry-A1B2" + page at 192.168.4.1
+                │ yes                       ▲  password shown on the LCD and serial monitor
+                ▼                           │
+          join the saved WiFi ─ fails 2 min ┘ (opens the hotspot too, keeps retrying)
+                │ ok
+                ▼
+          ONLINE ─► hotspot off ─► boot session ─► uploads (live sessions, below)
+```
+
+- **The hotspot** is WPA2 with a random 8-character password per setup, shown only on the LCD and the serial monitor, so only someone at the station can join. It allows at most 2 clients.
+- **The page** is served only to clients on the hotspot's own subnet, so someone on the normal WiFi can't reach it while it is open. It lists nearby 2.4 GHz networks, accepts a typed name for hidden ones, and checks every field (WiFi password 8–63 characters or empty, API address `https://…/api/v1`, token `epd_…`). `http://` is accepted only by the `esp32dev-lan` build. Leaving the token empty keeps the saved one.
+- **Saving** writes the details to flash and tries them straight away. If they fail (wrong password, network off) the hotspot stays open, the details stay saved, and the station retries every 30 s, so a network that appears later is joined automatically. The phone may lose the hotspot when the station moves to the router's radio channel; the LCD shows `CONNECTING TO:` and then `ONLINE`.
+- **Uploads pause** while the hotspot is open and resume once the station is online and the hotspot has closed. The live-session rules below are unchanged.
+- **Opening setup again:** hold the BOOT button for 5 s (clears the WiFi), or `setup` / `wifi reset` / `factory reset` over serial. It also opens by itself after 2 minutes of failing to join the saved network, and when the server refuses the device token (`TOKEN REFUSED`), so a new token can be entered without a cable.
+- **Stored in plain NVS.** The WiFi password and token are not encrypted in flash: anyone with the board and a USB cable can read them, as they could when they were compiled in. Neither is ever printed to the serial monitor or sent back to the page.
+- **Not supported:** 5 GHz networks, and networks that need a login page (school, hotel, some office WiFi).
 
 ## Device authentication
 
@@ -93,6 +117,8 @@ Experimental everywhere: on the LCD, in the API (`ph_value` field description) a
 
 ## Not built yet
 
-- **Thresholds and alerts on readings** (roadmap M9 criterion 2, M12).
-- **HC-SR04 fill level** and waste records (M11).
-- **ESP32-CAM** (M12).
+- **The setup hotspot** described above.
+- **Thresholds and alerts on readings** (roadmap M9 criterion 2), including the waste-bin alert: when the bin's load cell reads about **2 kg** the portal opens a "Waste bin nearly full" alert (it clears below 1.5 kg), and the station shows a local warning on its LCD and LED/buzzer even when not live.
+- **Waste records and pH records** (M10, M11).
+
+Dropped from the project (2026-11-09): the HC-SR04 ultrasonic fill-level sensor and the ESP32-CAM. The bin's fullness comes from its weight alone.

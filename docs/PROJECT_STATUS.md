@@ -28,9 +28,8 @@ Implementation status:
 - [x] Public catalogue schema implemented (migration `0003`: catalogue categories and products, `catalogue.manage` permission)
 - [ ] Business schema implemented (inventory, batches, suppliers, monitoring, waste)
 - [x] Inventory firmware implemented (`software/firmware/inventory-esp32/`: one ESP32 with DHT11, HX711 bin weight, pH, MFRC522, LCD; builds and its core logic is unit-tested; not yet run against the API on the real board)
-- [ ] Waste-bin firmware implemented (the bin's load cell is read by the inventory station; HC-SR04 fill level not built)
-- [ ] ESP32-CAM firmware documented
-- [x] Inventory-station wiring added (`hardware/inventory-station/README.md`); HC-SR04 and ESP32-CAM wiring still to do
+- [x] Waste-bin weight read by the inventory station (no separate bin controller). The HC-SR04 fill level and the ESP32-CAM were dropped on 2026-11-09
+- [x] Inventory-station wiring added (`hardware/inventory-station/README.md`)
 - [ ] Integration tests completed
 
 ## Milestone 1: frontend foundation (done)
@@ -50,7 +49,7 @@ Implemented and tested with unit tests, Playwright smoke tests and screenshot re
 - [x] Browser UI/UX and accessibility review (2026-11-01): every route checked at 375, 1024 and 1440px in light and dark, for all three preview roles. Fixed: sign-in now reports an unreachable server instead of "Not found." when no backend is running; each page has its own browser tab title; focus moves to the new page after navigation; 404s stay inside the public or portal layout; the portal sidebar stays in view on short screens; tap targets are at least 24px; the no-access state has a page heading
 
 Structure only. These show an honest "not connected" state and no data:
-- [ ] All portal modules (inventory, batches, expiry, suppliers, environment, pH, waste, camera, employees, alerts, reports, audit log, devices). Each lists what it is waiting on.
+- [ ] Remaining portal modules (inventory, batches, expiry, alerts, reports, audit log). Each lists what it is waiting on. The suppliers and camera modules are to be removed (scope cut, 2026-11-09).
 - [x] Public product catalogue (done in Milestone 4, below)
 - [ ] Public bakery contact details and opening hours (`website/frontend/src/config/site.ts`, to be filled in by the owners)
 
@@ -92,7 +91,7 @@ Not part of Milestone 3:
 - [ ] Changing an employee's role, and a staff-management screen in the portal (the API exists; the Employees module is still the Phase 9 placeholder)
 - [ ] Per-IP rate limiting (belongs in the reverse proxy at deployment)
 - [ ] A separate, less-privileged database role for the API (needed to make the audit log tamper-resistant against the app itself)
-- [x] Deployment cookie/CORS setup decided: one origin, Vercel forwards `/api/v1/*` to Render, no CORS (see Deployment below)
+- [x] Deployment cookie/CORS setup: changed after M3 to Firebase Hosting calling Render cross-origin, with a CORS allow-list and a SameSite=None cookie (see Deployment below)
 
 ## Milestone 4: public website (in progress)
 
@@ -164,24 +163,28 @@ Implemented and tested:
   - **Dashboard:** a real station panel replaces the "Sensors Live" card, which had no data behind it.
 - [x] Frontend tests: `src/features/sensors/sensors.test.tsx` (16 tests), and `e2e/fullstack/sensors.fullstack.ts`, where a real backend receives station uploads and card taps. Charts checked in light and dark screenshots.
 
+
 Not done yet:
 - [ ] Flash the firmware and run it against the API on the real station (local LAN first, then Render)
-- [ ] Thresholds and alerts on readings
-- [ ] HC-SR04 fill level, waste records, pH records workflow
+- [ ] WiFi setup hotspot to replace `secrets.h` (designed in HARDWARE_INTEGRATION.md, not built)
+- [ ] Thresholds and alerts on readings, including the waste bin "nearly full" alert at about 2 kg (portal alert plus a local station warning)
+- [ ] Waste records, pH records workflow
 - [ ] Data retention for `sensor_readings` (one row per 10 s while live, about 2 MB per live day)
 
-## Deployment (configuration prepared, not yet deployed)
+## Deployment (live on Firebase Hosting + Render + Neon, checks not yet run)
 
 Guide, environment variables, costs and checks: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Prepared and checked locally (2026-11-02):
-- [x] `render.yaml` (Render free web service, Singapore, Python 3.14.3, migrations on start, health check) and `website/frontend/vercel.json` (Vite build, `/api/v1/*` forward, SPA routing, security headers allowing the camera for this site only)
+- [x] `render.yaml` (Render free web service, Singapore, Python 3.14.3, migrations on start, health check)
 - [x] Production rehearsal: the committed backend files built in a fresh venv with `pip install .`, started with the Render start command and `ENVIRONMENT=production` against an empty throwaway database (migrations `0001`–`0003` applied, API docs 404, `no-store` on responses), served the production build through a same-origin proxy: `__Host-` Secure HttpOnly SameSite=Lax cookie, CSRF refusals (403), Storekeeper/Inspector permission refusals (403), admin CLI with `DATABASE_URL` overriding the local `.env`, the documented staff-account `curl` recipe, data kept and no migration re-run after a restart
-- [x] Rehearsal repeated after the QR work (2026-11-02): same results; production build has no preview code and no localhost URLs; QR lookup answers 501 through the proxy. `vercel.json` now also turns off Vercel's caching of forwarded API responses
+- [x] Rehearsal repeated after the QR work (2026-11-02): same results; production build has no preview code and no localhost URLs; QR lookup answers 501 through the proxy
+- [x] Hosting changed after the rehearsal: the website is on Firebase Hosting (`website/frontend/firebase.json`, SPA routing, security headers, COOP for the Google popup) and calls the API cross-origin. `vercel.json` removed (2026-11-09)
+- [x] Live (checked 2026-11-09): `https://ecopantry-a7342.web.app` and `https://ecopantry-api.onrender.com/api/v1/health` both answer 200
 
 Not done yet:
-- [ ] Neon, Render and Vercel accounts and the first real deployment
-- [ ] The checklist in DEPLOYMENT.md run on the real URLs, including a physical phone for the camera
+- [ ] The checklist in DEPLOYMENT.md run on the real URLs, including iPhone Safari (cross-site cookie) and a physical phone for the QR camera
+- [ ] Google sign-in on the live site (the production build env had no `VITE_FIREBASE_*` values on 2026-11-09)
 
 ## Portal navigation and layout (2026-11-02)
 

@@ -37,7 +37,7 @@ each one to its README phase.
 | M9 | Environmental monitoring (ESP32) | 8 |
 | M10 | RFID employees and pH monitoring | 9 |
 | M11 | Smart waste bin | 10 |
-| M12 | ESP32-CAM streaming, alerts and notifications | 11 |
+| M12 | Alerts and notifications (camera dropped) | 11 |
 | M13 | Reports, compliance, full integration, testing and deployment | 12 and 13 |
 
 The "Phase N" references in `website/frontend/src/config/portal-modules.ts`
@@ -60,7 +60,7 @@ README numbering. See [decision D1](#decisions-needed).
 | M9 Environmental monitoring | Structure only (no firmware) | M5, hardware |
 | M10 RFID and pH | Structure only (no firmware) | M9, M3 |
 | M11 Smart waste bin | Structure only (no firmware) | M9 |
-| M12 Camera and alerts | Structure only (no firmware) | M9, M11 |
+| M12 Alerts and notifications | Not started | M9, M11 |
 | M13 Reports, integration, deployment | Not started | all; deployment decisions D3–D5 |
 
 ```text
@@ -127,10 +127,10 @@ Follow-ups, tracked here so they aren't lost:
 
 | Item | Status | Planned in |
 |---|---|---|
-| Staff-management screen (list, create, deactivate, reactivate, reset password) | API done, no UI. The Employees module is a placeholder. | Before or with M10, which owns the Employees module. Can move earlier if admins need it sooner. |
-| Changing an employee's role | Not implemented (API or UI) | With the staff-management screen |
+| Staff-management screen (list, create, deactivate, reactivate, reset password) | A Users page was added later (list, create, role change, hard delete), but it has no deactivate/reactivate or password reset, and its delete breaks the never-delete rule. | Being fixed next (see Next milestone) |
+| Changing an employee's role | `PATCH /employees/{id}` and the Users page exist, but write no audit event, don't end sessions and can demote the last administrator | Being fixed next |
 | Role/permission management screen | Not implemented. See decision D2. | Depends on D2 |
-| Production API routing, cookie and CORS setup | Decided (D3); configuration in `render.yaml` and `website/frontend/vercel.json` | Done when the deployment is verified (docs/DEPLOYMENT.md) |
+| Production API routing, cookie and CORS setup | Decided (D15): Firebase Hosting calls Render cross-origin; CORS allow-list and SameSite=None cookie | Done when the deployment checks pass, including iPhone Safari (docs/DEPLOYMENT.md) |
 | Per-IP rate limiting and trusted-proxy client IPs | Not implemented; belongs in the reverse proxy | M13 |
 | Separate least-privilege database role for the API (audit tamper-resistance) | Not implemented | M13 |
 | Scheduled session cleanup (`app.cli purge-sessions`) | Command exists, not scheduled | M13 |
@@ -185,11 +185,12 @@ Goal: the business schema and shared backend pieces that M6–M12 build on.
 Acceptance criteria:
 
 1. Documented entity-relationship design for all business data: ingredients,
-   units, suppliers, storage locations, batches, stock movements, devices,
-   sensor readings, thresholds, alerts, waste records, pH records, RFID cards.
-2. Migrations for the core reference tables (ingredients, units, suppliers,
-   storage locations) with constraints, plus CRUD APIs, permissions, audit
-   events and tests.
+   units, storage areas, batches, stock movements, devices, sensor readings,
+   thresholds, alerts, waste records, pH records, RFID cards. In-shop only:
+   no suppliers (D14).
+2. Migrations for the core reference tables (ingredients, units, storage
+   areas) with constraints, plus CRUD APIs, permissions, audit events and
+   tests.
 3. Shared API conventions: pagination, filtering, sorting and validation
    errors, documented and tested once.
 4. Device registry and device authentication (per-device credential, stored
@@ -203,12 +204,13 @@ Status 2026-11-06: criterion 4 is done ahead of the rest (migration `0004`, `app
 
 Depends on M5. Acceptance criteria:
 
-1. Batches linked to ingredient, supplier and storage location, with received
-   date, expiry date, quantity and remaining quantity.
+1. Batches linked to an ingredient and an optional storage area (fridge,
+   freezer, shelf), with received date, expiry date, quantity and remaining
+   quantity.
 2. Stock-in, stock-out and adjustment movements; remaining quantity can't go
    negative; every movement attributed to an employee and audited.
 3. Low-stock status from reorder levels.
-4. Portal screens for Inventory, Batches and Suppliers with role-aware
+4. Portal screens for Inventory and Batches with role-aware
    controls (Inspector read-only, enforced by the backend).
 5. Backend, unit, smoke and full-stack tests.
 
@@ -276,23 +278,24 @@ Depends on M9 (same ESP32) and M3. Acceptance criteria:
 
 Depends on M9. Acceptance criteria:
 
-1. Firmware sending weight (HX711) and
-   fill distance (HC-SR04, ECHO level-shifted) to an authenticated endpoint.
+1. Firmware sending the bin weight (HX711) to an authenticated endpoint
+   (done, through the inventory station).
 2. Calibration procedure against the actual bin, recorded.
-3. Waste records with category, reason, employee and time; weight and fill
-   level stored separately.
-4. Portal waste page with history and bin status.
+3. "Nearly full" alert at about 2 kg: a portal alert (clears below 1.5 kg)
+   and a local LCD and LED/buzzer warning on the station that works even
+   outside a live session.
+4. Waste records with category, reason, employee and time.
+5. Portal waste page with history and bin status.
 
-### M12 ESP32-CAM streaming, alerts and notifications: Structure only, no firmware
+### M12 Alerts and notifications: Not started
+
+The ESP32-CAM camera was dropped from the project on 2026-11-09 (D14).
 
 Depends on M9 (alert engine) and M11. Acceptance criteria:
 
-1. ESP32-CAM firmware with an MJPEG stream on its own route/network.
-2. Portal camera page embeds the stream for authorised roles only, with real
-   connection status.
-3. Alerts page: open, acknowledged and resolved alerts from all rules;
+1. Alerts page: open, acknowledged and resolved alerts from all rules;
    acknowledgement recorded against the employee.
-4. Notification channel, if any, decided first (decision D9).
+2. Notification channel, if any, decided first (decision D9).
 
 ### M13 Reports, compliance, integration, testing and deployment: Not started
 
@@ -301,18 +304,17 @@ Depends on all other milestones. Acceptance criteria:
 1. Stock, expiry, environment and waste reports with CSV and PDF export.
 2. Audit log viewer with filtering (Inspector and Administrator).
 3. End-to-end demonstration of the full workflow with real hardware.
-4. Deployment: hosting, API routing, cookies/CORS, TLS, reverse proxy rate
+4. Deployment: hosting, API routing, cookies/CORS, TLS, rate
    limiting, trusted proxy IPs, least-privilege database role, backups,
    scheduled session cleanup, secrets management.
 5. Documentation updated for setup, wiring and operation.
 
 ## Next milestone
 
-**M4 Public website.** It is next in order, and nothing blocks it: the
-catalogue only needs its own tables on the M2 backend and an administrator
-permission on the M3 auth system. It does not need the inventory schema (M5),
-and must not use it: the public catalogue and ingredient inventory are kept
-separate.
+**M5 Core backend and database** (in-shop schema), together with fixing the
+staff-management and registration code added after M3 so it follows the
+rules again (no hard delete, no unverified self-registration, audited role
+changes). M4 is waiting only on owner content and decisions D6/D7.
 
 ## Blockers
 
@@ -320,7 +322,7 @@ separate.
   product list, photos). The site hides these until they exist.
 - Product images (D6) and the contact form (D7) need decisions before they
   can be built.
-- Hardware milestones need the physical units. The inventory station exists (one ESP32, DHT11); the HC-SR04 and the ESP32-CAM aren't wired yet.
+- Hardware checks need the physical station (one ESP32, DHT11, bin load cell), which exists but hasn't run against the API yet.
 
 ## Decisions needed
 
@@ -328,8 +330,8 @@ separate.
 |---|---|---|
 | D1 | Which numbering is canonical: README phases or milestones | Use milestones (M0–M13) everywhere and update the README table and the "Phase N" texts in the portal |
 | D2 | Should roles and permissions be editable in the portal? | No. Keep the three fixed roles in code and migrations; allow changing an employee's role only. Editable permissions would break the backend/test mirror and are risky for a prototype. |
-| D3 | Production API routing | **Decided (2026-11-02):** the API is served under the site's own origin; Vercel forwards `/api/v1/*` to Render (`website/frontend/vercel.json`). No code change, cookies keep working. See [DEPLOYMENT.md](DEPLOYMENT.md). |
-| D4 | Hosting confirmation | **Decided (2026-11-02):** Vercel (website), Render free web service (API), Neon free PostgreSQL (no 30-day expiry, unlike Render's free database). See [DEPLOYMENT.md](DEPLOYMENT.md). |
+| D3 | Production API routing | Superseded by D15. (Was: Vercel forwards `/api/v1/*` to Render, same origin.) |
+| D4 | Hosting confirmation | Render free web service (API) and Neon free PostgreSQL (no 30-day expiry, unlike Render's free database) still stand; the website host changed to Firebase (D15). See [DEPLOYMENT.md](DEPLOYMENT.md). |
 | D5 | When to deploy a preview | **Decided:** now, for the project demonstration, from the `development` branch |
 | D6 | Product image storage | Store uploads behind the API (validated type and size, re-encoded) in object storage chosen with D4; until then, no images |
 | D7 | Contact form: store enquiries, email them, or both; spam protection; retention period; who reads them | Store in PostgreSQL, readable by administrators in the portal, honeypot field plus proxy rate limiting, 12-month retention, privacy note on the form |
@@ -339,3 +341,5 @@ separate.
 | D9 | Alert notification channel (email, SMS, none) | Portal-only alerts for the prototype |
 | D10 | Who manages the public catalogue | Administrators only (implemented that way; adding Storekeepers is one migration) |
 | D11 | Allergen and ingredient information on public product pages | Leave out until the owners can supply verified information; wrong allergen data is a safety risk |
+| D14 | Scope cut | **Decided (2026-11-09):** inventory is in-shop only (no suppliers); the HC-SR04 ultrasonic fill level and the ESP32-CAM are dropped; the waste bin raises a "nearly full" alert at about 2 kg of weight |
+| D15 | Website hosting | **Decided (2026-11-09):** keep the live setup: Firebase Hosting (`ecopantry-a7342.web.app`) and Firebase Auth for Google sign-in, calling the Render API cross-origin with a CORS allow-list and a SameSite=None cookie. If iPhone Safari blocks that cookie, move both onto one custom domain. |

@@ -30,10 +30,9 @@ The project combines a web application, backend API, database, and ESP32-based h
 4. Monitor temperature and humidity using an ESP32.
 5. associate employee operations with RFID card records.
 6. Record experimental pH measurements for selected food samples.
-7. Measure smart-bin waste weight and fill level.
-8. Provide an authorized live view from an ESP32-CAM.
-9. Generate alerts, reports, and audit records.
-10. Provide a public customer-facing website that can be browsed without signing in.
+7. Measure smart-bin waste weight and alert when the bin is nearly full (about 2 kg).
+8. Generate alerts, reports, and audit records.
+9. Provide a public customer-facing website that can be browsed without signing in.
 
 ## System architecture
 
@@ -44,27 +43,20 @@ The project combines a web application, backend API, database, and ESP32-based h
                   React Customer Website
                            |
                            v
-+------------------+   +--------------------+   +------------------+
-| Inventory ESP32  |-->|                    |<--| Waste-bin ESP32  |
-| RFID / DHT / pH  |   | FastAPI REST API   |   | Load cell /      |
-+------------------+   |                    |   | HX711 / HC-SR04  |
-                       +---------+----------+   +------------------+
++------------------------+   +--------------------+
+| Inventory ESP32        |-->|                    |
+| RFID / DHT / pH /      |   | FastAPI REST API   |
+| waste-bin load cell    |   |                    |
++------------------------+   +---------+----------+
                                  |
                                  v
                          PostgreSQL Database
                                  |
                                  v
                        React Management Portal
-
-+------------------+
-| ESP32-CAM        |---- Independent MJPEG stream
-| OV2640           |     (camera route/network)
-+------------------+
 ```
 
 The ESP32 devices communicate with the backend over HTTP using JSON. Microcontrollers must not connect directly to the database.
-
-The ESP32-CAM video stream is independent of the sensor-reading API.
 
 ## Main features
 
@@ -85,16 +77,15 @@ The ESP32-CAM video stream is independent of the sensor-reading API.
 - Temperature and humidity monitoring.
 - RFID employee identification and activity records.
 - Experimental pH measurement records.
-- Smart waste-bin weight and fill-level monitoring.
-- ESP32-CAM live stream.
+- Smart waste-bin weight monitoring with a "nearly full" alert at about 2 kg.
 - Alerts, compliance-oriented reports, CSV/PDF exports, and audit logs.
 
 ### Important separation
-The public finished-product catalogue is separate from internal raw ingredient inventory. Customers must not be able to access internal stock quantities, batch details, supplier records, employee information, sensor readings, waste records, or compliance records.
+The public finished-product catalogue is separate from internal raw ingredient inventory. Customers must not be able to access internal stock quantities, batch details, employee information, sensor readings, waste records, or compliance records.
 
 ## Hardware
 
-The plan was three independent units. **The current prototype combines the first two on one ESP32**; the camera unit is still planned.
+**The prototype is one ESP32 station** that also weighs the waste bin. The earlier plans for an ultrasonic fill-level sensor and an ESP32-CAM were dropped on 2026-11-09.
 
 ### 1. Inventory monitoring station (built, one ESP32)
 - ESP32 DevKit V1
@@ -108,17 +99,9 @@ The plan was three independent units. **The current prototype combines the first
 Wiring and pins: `hardware/inventory-station/README.md`. Firmware: `software/firmware/inventory-esp32/`. How it reaches the portal, including the live-session upload cut-off that keeps the free-tier hosting asleep: `docs/HARDWARE_INTEGRATION.md`.
 
 ### 2. Smart waste bin
-- Load cell and HX711 (wired to the inventory station's ESP32 in the prototype)
-- HC-SR04 ultrasonic distance sensor (not fitted yet)
-- A separate ESP32 controller only if the bin moves away from the station
+- Load cell and HX711, wired to the inventory station's ESP32
 
-The load cell measures weight. The ultrasonic sensor measures distance to the waste surface and is used to estimate fill percentage after calibration.
-
-### 3. Camera monitoring
-- ESP32-CAM AI Thinker
-- OV2640 camera
-- Independent Wi-Fi connection
-- MJPEG stream
+The load cell measures the bin's weight. At about 2 kg the bin counts as nearly full: the portal raises an alert and the station warns locally (planned, see `docs/ROADMAP.md`).
 
 See `hardware/` and `software/firmware/` for the intended locations of wiring diagrams, enclosure files, and firmware.
 
@@ -137,7 +120,7 @@ See `hardware/` and `software/firmware/` for the intended locations of wiring di
 | ORM / migrations | SQLAlchemy, Alembic |
 | Database | PostgreSQL |
 | Firmware | PlatformIO, Arduino framework, C++ |
-| Hosting (planned) | Cloudflare Pages, Render, Supabase |
+| Hosting | Firebase Hosting (website, Google sign-in), Render (API), Neon (PostgreSQL) |
 
 Technology choices may be updated through documented project decisions rather than changed ad hoc.
 
@@ -155,14 +138,11 @@ ECOPANTRY/
 ├── hardware/
 │   ├── inventory-station/
 │   ├── smart-waste-bin/
-│   ├── esp32-cam/
 │   ├── schematics/
 │   └── enclosure/
 ├── software/
 │   ├── firmware/
-│   │   ├── inventory-esp32/
-│   │   ├── waste-bin-esp32/
-│   │   └── esp32-cam/
+│   │   └── inventory-esp32/
 │   └── shared/
 ├── docs/
 │   ├── diagrams/
@@ -197,7 +177,7 @@ ECOPANTRY/
 | 8 | ESP32 environmental monitoring |
 | 9 | RFID, employees, and pH records |
 | 10 | Smart waste-bin integration |
-| 11 | Camera, alerts, and notifications |
+| 11 | Alerts and notifications |
 | 12 | Compliance, reports, and audit logs |
 | 13 | Integration, testing, and deployment |
 
@@ -206,7 +186,7 @@ A phase is complete only after its functionality has been tested. Do not present
 ## Getting started
 
 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for what is implemented and tested.
-Hosting on free plans (Vercel, Render, Neon): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Hosting on free plans (Firebase, Render, Neon): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Clone the repository
 
@@ -268,8 +248,7 @@ Use `.env.example` files containing placeholder values only. Current ones:
 - The station uses a DHT11 (±2 °C, ±5 %RH per its datasheet); don't claim better accuracy than that.
 - Power the MFRC522 from 3.3 V.
 - Ensure the pH interface board's analog output cannot exceed the ESP32 ADC input limit.
-- The HC-SR04 ECHO output is typically 5 V; use a suitable voltage divider or level shifter before an ESP32 GPIO.
-- Calibrate the load cell and ultrasonic fill-level measurement using the actual bin.
+- Calibrate the load cell using the actual bin.
 - Use a stable, appropriately rated supply for servos or other high-current loads; keep power and signal grounds correctly designed.
 - Keep liquid samples away from exposed electronics.
 - Do not use pH alone to declare food safe or spoiled.

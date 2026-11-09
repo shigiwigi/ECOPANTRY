@@ -5,15 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Current state
 
 Implemented: the frontend foundation (`website/frontend/`, Milestone 1), the backend foundation (`website/backend/`, Milestone 2: settings, PostgreSQL via Podman, SQLAlchemy, Alembic, health endpoints, error handling) and staff authentication (Milestone 3: roles, permissions, employees, PostgreSQL sessions, CSRF, audit log, real portal sign-in; design in `docs/AUTH_DESIGN.md`). Milestone 4 (public website) is in progress: the public catalogue (migration `0003`, public read endpoints, admin-only portal management, real Products pages) is done; images, the contact form and owner content are waiting on decisions. QR labels and scanning (M7) were built ahead of M6: label format, printable labels, camera scanner and a protected `GET /batches/by-label/{code}` that answers 501 until batch records exist (`docs/QR_LABELS.md`). Hardware integration has started (`docs/HARDWARE_INTEGRATION.md`):
-- **One ESP32 inventory station** (DHT11, waste-bin HX711, experimental pH, MFRC522, LCD). Its firmware is in `software/firmware/inventory-esp32/` and its wiring in `hardware/inventory-station/`.
+- **One ESP32 inventory station** (DHT11, waste-bin HX711, experimental pH, MFRC522, LCD). Its firmware is in `software/firmware/inventory-esp32/` and its wiring in `hardware/inventory-station/`. Its WiFi, API address and token come from the git-ignored `include/secrets.h` (a setup hotspot to replace it is planned, not built).
 - **Migration `0004`** adds devices, live-session budget, sensor readings, RFID cards and scans.
 - **Device auth:** bearer tokens on `/device/*` via `app/auth/device.py`, never staff cookies. Device routes are protected by the token, not by a session.
 - **Live sessions:** stations upload only while live (power-on or authorised card tap, daily cap). The backend refuses readings outside a session, so idle hardware never keeps Render/Neon awake.
 - **Portal:** Environment, pH, Waste, Devices and Employees (RFID cards) pages read these.
 
-There are no inventory, batch or supplier tables yet. `waste-bin-esp32` and `esp32-cam` are still empty scaffolds. `docs/ROADMAP.md` has the milestone order (M0–M13, mapped to the README phases), dependencies and acceptance criteria; `docs/PROJECT_STATUS.md` is the checklist of what is implemented. Update both as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
+There are no inventory or batch tables yet. Scope (2026-11-09): inventory is in-shop only (no suppliers), the waste bin's fullness comes from its weight alone (a "nearly full" alert at about 2 kg), and the HC-SR04 ultrasonic sensor and ESP32-CAM are dropped. `docs/ROADMAP.md` has the milestone order (M0–M13, mapped to the README phases), dependencies and acceptance criteria; `docs/PROJECT_STATUS.md` is the checklist of what is implemented. Update both as work lands. Do not describe planned features as working until they are implemented and tested (the README is explicit about this).
 
-Deployment (`docs/DEPLOYMENT.md`): Vercel serves the frontend and forwards `/api/v1/*` to the API on Render (`website/frontend/vercel.json`), so production stays same-origin and needs no CORS; `render.yaml` runs `alembic upgrade head` on every start, so migrations reach production on push to `main`; the database is Neon. Never put the Neon URL or any other secret in these files.
+Deployment (`docs/DEPLOYMENT.md`): Firebase Hosting serves the frontend (`website/frontend/firebase.json`, project `ecopantry-a7342`, deployed by hand with `firebase deploy --only hosting` after `npm run build`; only when the user asks) and Firebase Auth provides Google sign-in. The API is on Render (`https://ecopantry-api.onrender.com`); the site calls it cross-origin (`VITE_API_BASE_URL` in the git-ignored `.env.production.local`), so the API has a CORS allow-list of exact origins and a `SameSite=None` session cookie, with `X-CSRF-Token` on unsafe requests. Never allow arbitrary origins. `render.yaml` runs `alembic upgrade head` on every start, so migrations reach production on push to `main`; the database is Neon. Never put the Neon URL or any other secret in these files.
 
 When adding a component, give it its own dependency file and setup instructions (README expects this), plus a `.env.example` with placeholders only.
 
@@ -93,14 +93,13 @@ EcoPantry is a bakery inventory / food-quality / waste-management prototype with
 
 - **Backend** (`website/backend/`): Python, FastAPI, Pydantic, SQLAlchemy + Alembic, PostgreSQL. It is the only thing that touches the database and it enforces role-based access (Administrator, Storekeeper, Inspector).
 - **Frontend** (`website/frontend/`): React + TypeScript + Vite, Tailwind/shadcn/ui, React Router, TanStack Query, React Hook Form + Zod, Recharts. It contains two apps: a public customer site (no login) and the internal management portal.
-- **Firmware** (`software/firmware/{inventory-esp32,waste-bin-esp32,esp32-cam}/`): PlatformIO, Arduino framework, C++. Hardware docs go in `hardware/`; code shared across components in `software/shared/`; tests in `tests/`.
+- **Firmware** (`software/firmware/inventory-esp32/`): PlatformIO, Arduino framework, C++. Hardware docs go in `hardware/`; code shared across components in `software/shared/`; tests in `tests/`.
 
 Constraints that cut across several of these directories:
 
 db- ESP32s talk to the backend over HTTP + JSON with authenticated device endpoints. They must never connect to the database directly.
-- The ESP32-CAM MJPEG stream is independent of the sensor API (separate route/network); the portal just embeds it for authorized users.
 - The public finished-product catalogue is separate from internal raw-ingredient inventory. Public endpoints must expose only explicitly public catalogue/bakery data, never stock quantities, batches, suppliers, employees, sensor readings, waste or compliance records.
-- Core domain concepts: batch-level inventory with QR labels, expiry tracking with FEFO recommendations, threshold-based alerts evaluated by the backend on incoming sensor readings, RFID-linked employee operations, audit logs.
+- Core domain concepts: in-shop batch-level inventory with QR labels, expiry tracking with FEFO recommendations, threshold-based alerts evaluated by the backend on incoming sensor readings, RFID-linked employee operations, audit logs.
 
 ## Design system (mandatory for all frontend work)
 
@@ -145,10 +144,9 @@ Functional requirements:
 ## Hardware cautions to preserve in code and docs
 
 - MFRC522 runs at 3.3 V.
-- HC-SR04 ECHO is 5 V; level-shift or divide before an ESP32 GPIO.
 - pH board analog output must not exceed the ESP32 ADC limit.
 - DHT sensor model is still unconfirmed; don't pick a library or state accuracy until it is.
-- Load cell and ultrasonic fill-level need calibration against the actual bin.
+- The load cell needs calibration against the actual bin.
 - pH is experimental and must never be used alone to declare food safe or spoiled; the project is not a certified food-safety system.
 
 ## Workflow

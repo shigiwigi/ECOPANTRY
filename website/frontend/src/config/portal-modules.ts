@@ -91,7 +91,7 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Alerts from temperature, humidity, expiry, stock and device rules",
       "Acknowledgement recorded against the signed-in user",
     ],
-    requires: "Backend alert rules (Phase 11).",
+    requires: "Backend alert rules (milestone M9).",
   },
   {
     id: "inventory",
@@ -107,7 +107,7 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Stock-in, stock-out and adjustments, each recorded in the audit log",
       "Low-stock highlighting",
     ],
-    requires: "Inventory API (Phase 5).",
+    requires: "Inventory API (milestone M6).",
   },
   {
     id: "batches",
@@ -123,7 +123,7 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Remaining quantity per batch",
       "Batch history from receipt to use or disposal",
     ],
-    requires: "Batch API (Phase 5).",
+    requires: "Batch API (milestone M6).",
   },
   {
     id: "expiry",
@@ -138,7 +138,7 @@ export const PORTAL_MODULES: PortalModule[] = [
       "Near-expiry and expired batch lists",
       "First Expired, First Out recommendation per ingredient",
     ],
-    requires: "Batch API with expiry dates (Phase 6).",
+    requires: "Batch API with expiry dates (milestone M7).",
   },
   {
     id: "scanner",
@@ -171,7 +171,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     group: "Stock",
     roles: ALL,
     planned: ["Supplier records and contacts", "Batches received per supplier"],
-    requires: "Supplier API (Phase 5).",
+    requires: "Not planned: inventory is in-shop only.",
   },
   {
     id: "ph",
@@ -203,7 +203,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     group: "Monitoring",
     roles: OVERSIGHT,
     planned: ["Authorised MJPEG live view", "Connection status from the camera itself"],
-    requires: "ESP32-CAM stream (Phase 11).",
+    requires: "Not planned: the camera was dropped.",
   },
   {
     id: "employees",
@@ -226,7 +226,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     group: "Records",
     roles: OVERSIGHT,
     planned: ["Stock, expiry, environment and waste reports", "CSV and PDF export"],
-    requires: "Stored operational records (Phase 12).",
+    requires: "Stored operational records (milestone M13).",
   },
   {
     id: "audit",
@@ -238,7 +238,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     group: "Records",
     roles: OVERSIGHT,
     planned: ["Immutable change history with user, action and timestamp", "Filtering by user, module and date"],
-    requires: "Backend audit logging (Phase 12).",
+    requires: "Audit log viewer API (milestone M13).",
   },
   {
     id: "devices",

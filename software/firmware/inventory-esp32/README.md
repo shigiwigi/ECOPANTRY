@@ -49,7 +49,7 @@ You need [PlatformIO](https://platformio.org/) (the VS Code extension or the `pi
    ```
 
    Fill in the 2.4 GHz WiFi name and password, the device token, and `API_BASE_URL`:
-   - production: `https://<your-render-service>.onrender.com/api/v1` (Render directly, not the Vercel site)
+   - production: `https://<your-render-service>.onrender.com/api/v1` (Render directly, not the website)
    - a laptop on the same WiFi: `http://<laptop-LAN-IP>:8000/api/v1`, built with the `esp32dev-lan` environment (see below)
 
    The build stops with a clear message if `include/secrets.h` is missing.

@@ -1,6 +1,6 @@
 # Inventory station: wiring (single-ESP32 prototype)
 
-The prototype puts every sensor on **one ESP32 DevKit V1** (ESP32-WROOM-32, 30/38-pin): storage climate, the waste-bin load cell, the pH probe, the RFID reader and the display. The separate waste-bin controller planned in the README is not built. The HC-SR04 fill-level sensor is not fitted yet (see [../smart-waste-bin/README.md](../smart-waste-bin/README.md)).
+The prototype puts every sensor on **one ESP32 DevKit V1** (ESP32-WROOM-32, 30/38-pin): storage climate, the waste-bin load cell, the pH probe, the RFID reader and the display. The bin has no controller of its own (see [../smart-waste-bin/README.md](../smart-waste-bin/README.md)).
 
 Firmware: [software/firmware/inventory-esp32](../../software/firmware/inventory-esp32/README.md). The pins below are the ones in its `include/config.h`, taken from the working all-sensors sketch.
 
@@ -63,7 +63,7 @@ flowchart LR
   - For a long-running build, remove the backpack's pull-ups and add 4.7 kΩ pull-ups to 3.3 V, or use an I2C level shifter.
 - GPIO 34 is input-only and has no internal pull-up. That's fine for an analog input.
 - **GPIO 5 is a strapping pin.** The MFRC522's SS line is normally high at boot, which is what the ESP32 expects. If the board fails to boot with the reader attached, check the reader's wiring first.
-- **The load cell and fill level need calibration against the real bin** (see the firmware README). The cell must take the bin's whole weight; mount it so nothing else carries the load.
+- **The load cell needs calibration against the real bin** (see the firmware README). The cell must take the bin's whole weight; mount it so nothing else carries the load.
 - **pH is experimental.** A hobby pH board read through the ESP32 ADC is not a food-safety instrument. Never use it alone to decide whether food is safe or spoiled. EcoPantry is a prototype, not a certified food-safety system.
 - Keep liquid samples away from the electronics, and keep mains wiring out of this enclosure.
 
