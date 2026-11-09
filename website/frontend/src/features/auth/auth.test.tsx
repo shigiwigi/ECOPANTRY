@@ -164,6 +164,11 @@ describe("staff sign-in against the API", () => {
       "GET /api/v1/auth/me": () => json(SESSION),
       // The dashboard's station summary polls this; an unanswered call would be a 401 and end the session.
       "GET /api/v1/sensors/stations": () => json({ stations: [] }),
+      "GET /api/v1/dashboard/summary": () =>
+        json({
+          low_stock_ingredients: 0, near_expiry_batches: 0, expired_batches: 0, expiry_window_days: 7, open_alerts: 0,
+          acknowledged_alerts: 0, top_alert: null, active_staff: 1, today: "2026-11-10", server_time: "2026-11-10T09:00:00Z",
+        }),
       "POST /api/v1/auth/logout": () => new Response("Bad gateway", { status: 502 }),
     })
     renderApp("/portal")
