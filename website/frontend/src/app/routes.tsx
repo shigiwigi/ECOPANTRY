@@ -26,6 +26,7 @@ const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = 
   employees: () => import("@/pages/portal/EmployeesPage"),
   alerts: () => import("@/pages/portal/AlertsPage"),
   audit: () => import("@/pages/portal/AuditPage"),
+  reports: () => import("@/pages/portal/ReportsPage"),
   enquiries: () => import("@/pages/portal/EnquiriesPage"),
 }
 
