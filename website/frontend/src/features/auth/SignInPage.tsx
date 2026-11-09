@@ -2,7 +2,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useEffect, useState, type FormEvent } from "react"
 import { useForm } from "react-hook-form"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
-import { z } from "zod"
 
 import { Logo } from "@/components/common/Logo"
 import { RouteLoading } from "@/components/common/RouteLoading"
@@ -12,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, apiRequest } from "@/lib/api/client"
 import { useAuth } from "./auth-context"
+import { signInSchema, type SignInValues } from "./schemas"
 import { ThemeMenu } from "@/features/theme/ThemeMenu"
 import { useDocumentTitle } from "@/lib/document-title"
 import {
@@ -23,12 +23,9 @@ import {
   signOutOfGoogle,
 } from "@/lib/firebase"
 
-const formSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
-})
+const formSchema = signInSchema
 
-type FormValues = z.infer<typeof formSchema>
+type FormValues = SignInValues
 
 /** Codes for which the Google account is real but isn't an active staff account. */
 const NOT_STAFF_CODES = new Set(["google_account_not_staff", "account_disabled"])
