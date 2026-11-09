@@ -53,6 +53,7 @@ function renderAt(path: string, user: StaffUser, { isPreview = false } = {}) {
     checkSession: vi.fn(),
     signIn: vi.fn(),
     signOut: vi.fn(),
+    setSession: vi.fn(),
     setPreviewRole: null,
   }
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -140,7 +141,7 @@ describe("Inventory page", () => {
 
   it("shows loading, then stock with a low-stock badge", async () => {
     stubFetch(overview)
-    renderAt("/portal/inventory", staff("shopkeeper"))
+    renderAt("/portal/inventory", staff("storekeeper"))
 
     expect(await screen.findByText("Loading stock…")).toBeInTheDocument()
     const table = await screen.findByRole("table", { name: "Ingredient stock" })
@@ -183,7 +184,7 @@ describe("Inventory page", () => {
 
   it("hides every stock-changing control from inspectors", async () => {
     stubFetch(overview)
-    renderAt("/portal/inventory", staff("food_inspector"))
+    renderAt("/portal/inventory", staff("inspector"))
     await screen.findByRole("table")
 
     expect(screen.queryByRole("button", { name: "Receive stock" })).not.toBeInTheDocument()
@@ -197,7 +198,7 @@ describe("Inventory page", () => {
       if (call.url.startsWith("/api/v1/storage-areas")) return json(page([{ id: "a1", name: "Dry store", kind: "shelf", is_active: true }]))
       return overview(call)
     })
-    renderAt("/portal/inventory", staff("shopkeeper"))
+    renderAt("/portal/inventory", staff("storekeeper"))
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Receive stock" }))
 
@@ -268,7 +269,7 @@ describe("Batches page", () => {
 
   it("explains an empty list differently for managers and inspectors", async () => {
     server((call) => (call.url.startsWith("/api/v1/batches") ? json(page([])) : undefined))
-    renderAt("/portal/batches", staff("shopkeeper"))
+    renderAt("/portal/batches", staff("storekeeper"))
     expect(await screen.findByText(/Receive stock to create the first batch/)).toBeInTheDocument()
   })
 
@@ -296,7 +297,7 @@ describe("Batches page", () => {
 
   it("takes stock out and refreshes", async () => {
     server((call) => (call.method === "POST" ? json({ ...DETAIL, remaining_quantity: "4.500" }) : undefined))
-    renderAt("/portal/batches?batch=b1", staff("shopkeeper"))
+    renderAt("/portal/batches?batch=b1", staff("storekeeper"))
     const user = userEvent.setup()
     const dialog = await screen.findByRole("dialog")
     await user.click(await within(dialog).findByRole("button", { name: "Use stock" }))
@@ -349,7 +350,7 @@ describe("Batches page", () => {
   it("prints the batch's own label from the record", async () => {
     server()
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
-    renderAt("/portal/batches?batch=b1", staff("shopkeeper"))
+    renderAt("/portal/batches?batch=b1", staff("storekeeper"))
     const dialog = await screen.findByRole("dialog")
     await userEvent.setup().click(await within(dialog).findByRole("button", { name: "Print label" }))
 
@@ -359,7 +360,7 @@ describe("Batches page", () => {
 
   it("hides stock controls from inspectors but still shows the history", async () => {
     server()
-    renderAt("/portal/batches?batch=b1", staff("food_inspector"))
+    renderAt("/portal/batches?batch=b1", staff("inspector"))
     const dialog = await screen.findByRole("dialog")
     expect(await within(dialog).findByText("Morning bake")).toBeInTheDocument()
 

@@ -67,7 +67,7 @@ export const SEVERITY_LABELS: Record<Severity, string> = { info: "Info", warning
 export const STATUS_LABELS: Record<AlertStatus, string> = { open: "Open", acknowledged: "Acknowledged", resolved: "Resolved" }
 
 /** Roles that may acknowledge alerts (the backend's `alerts.acknowledge`); inspectors only view. */
-export const ACKNOWLEDGE_ROLES = ["admin", "shopkeeper"] as const
+export const ACKNOWLEDGE_ROLES = ["admin", "storekeeper"] as const
 
 /** A value in the metric's display unit, e.g. 2050 g -> "2.05 kg". */
 export function formatMetricValue(metric: AlertMetric, value: number | null): string {

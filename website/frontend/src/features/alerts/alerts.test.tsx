@@ -78,6 +78,7 @@ function renderAt(path: string, user: StaffUser) {
     checkSession: vi.fn(),
     signIn: vi.fn(),
     signOut: vi.fn(),
+    setSession: vi.fn(),
     setPreviewRole: null,
   }
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -119,7 +120,7 @@ describe("Alerts page", () => {
   it("lists open alerts with human labels and kg, and lets a shopkeeper acknowledge", async () => {
     stubFetch(handler([alert()]))
     setCsrfToken("csrf-token")
-    renderAt("/portal/alerts", staff("shopkeeper"))
+    renderAt("/portal/alerts", staff("storekeeper"))
 
     expect(await screen.findByText("Waste bin nearly full: 2.05 kg (above 2.00 kg)", { selector: "p" })).toBeInTheDocument()
     expect(screen.getByText("Waste bin weight, Inventory station 1")).toBeInTheDocument()
@@ -136,7 +137,7 @@ describe("Alerts page", () => {
 
   it("hides Acknowledge from inspectors", async () => {
     stubFetch(handler([alert()]))
-    renderAt("/portal/alerts", staff("food_inspector"))
+    renderAt("/portal/alerts", staff("inspector"))
 
     expect(await screen.findByText(/Waste bin nearly full: 2\.05 kg/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /^Acknowledge(?!d)/ })).not.toBeInTheDocument()
@@ -144,7 +145,7 @@ describe("Alerts page", () => {
 
   it("filters by status and shows an empty state", async () => {
     stubFetch(handler([]))
-    renderAt("/portal/alerts", staff("shopkeeper"))
+    renderAt("/portal/alerts", staff("storekeeper"))
 
     expect(await screen.findByText("No open alerts")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Resolved" }))
@@ -164,7 +165,7 @@ describe("Alerts page", () => {
 
   it("says so when alerts can't be loaded", async () => {
     stubFetch((call) => (call.url.includes("/alerts?") ? json({ detail: "Server trouble", code: "boom" }, 500) : json({ server_time: "2026-11-09T10:00:00Z", stations: [] })))
-    renderAt("/portal/alerts", staff("shopkeeper"))
+    renderAt("/portal/alerts", staff("storekeeper"))
 
     expect(await screen.findByText("Alerts couldn't be loaded")).toBeInTheDocument()
     expect(screen.getByText("Server trouble")).toBeInTheDocument()
@@ -196,7 +197,7 @@ describe("Waste page banner", () => {
 
   it("warns that the bin is nearly full while an alert is open", async () => {
     stubFetch(handler([alert()]))
-    renderAt("/portal/waste", staff("shopkeeper"))
+    renderAt("/portal/waste", staff("storekeeper"))
 
     expect(await screen.findByText("Bin nearly full")).toBeInTheDocument()
     expect(screen.getByText(/Inventory station 1 reads 2\.10 kg/)).toBeInTheDocument()
@@ -206,7 +207,7 @@ describe("Waste page banner", () => {
 
   it("shows no banner without an alert", async () => {
     stubFetch(handler([]))
-    renderAt("/portal/waste", staff("shopkeeper"))
+    renderAt("/portal/waste", staff("storekeeper"))
 
     expect(await screen.findByText(/Alert limits:/)).toBeInTheDocument()
     expect(screen.queryByText("Bin nearly full")).not.toBeInTheDocument()

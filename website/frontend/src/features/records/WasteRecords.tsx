@@ -29,7 +29,7 @@ const SUMMARY_DAYS = 30
 export function WasteRecords() {
   const { user, isPreview } = useAuth()
   // UX only: the backend allows recording with `waste.record` (administrators and shopkeepers).
-  const canRecord = user?.role === "admin" || user?.role === "shopkeeper"
+  const canRecord = user?.role === "admin" || user?.role === "storekeeper"
 
   if (isPreview) {
     return (

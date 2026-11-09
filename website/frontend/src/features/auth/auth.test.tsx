@@ -14,6 +14,8 @@ vi.mock("./preview", () => ({
   PREVIEW_USER: { id: "preview", name: "Preview user", email: "preview@localhost", role: "admin", permissions: [] },
 }))
 
+const EMPTY_PAGE = { items: [], total: 0, limit: 25, offset: 0 }
+
 const SESSION = {
   user: {
     id: "7f6c0f39-8d2a-4a5c-9b8e-0d6b1f2a3c4d",
@@ -50,7 +52,7 @@ function mockApi(routesByKey: Record<string, Handler>) {
         credentials: init.credentials,
       }
       calls.push(request)
-      const handler = routesByKey[`${method} ${url}`]
+      const handler = routesByKey[`${method} ${url}`] ?? routesByKey[`${method} ${url.split("?")[0]}`]
       return handler ? handler(request) : json({ detail: "Sign in to continue.", code: "not_authenticated" }, 401)
     }),
   )
@@ -100,14 +102,15 @@ describe("staff sign-in against the API", () => {
   })
 
   it("restores an existing session when the portal opens", async () => {
-    mockApi({ "GET /api/v1/auth/me": () => json(SESSION) })
+    mockApi({ "GET /api/v1/auth/me": () => json(SESSION), "GET /api/v1/ingredients": () => json(EMPTY_PAGE) })
     renderApp("/portal/inventory")
     expect(await screen.findByRole("heading", { name: "Ingredient inventory", level: 1 })).toBeInTheDocument()
-    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["GET /api/v1/auth/me"])
+    // Restoring the session asks the API about the session exactly once.
+    expect(calls.filter((c) => c.url.includes("/auth/")).map((c) => `${c.method} ${c.url}`)).toEqual(["GET /api/v1/auth/me"])
   })
 
   it("sends visitors without a session to sign-in, then back to the page they wanted", async () => {
-    mockApi({ "POST /api/v1/auth/login": () => json(SESSION) })
+    mockApi({ "POST /api/v1/auth/login": () => json(SESSION), "GET /api/v1/ingredients": () => json(EMPTY_PAGE) })
     const router = renderApp("/portal/inventory")
     expect(await screen.findByRole("heading", { name: "Staff sign-in" })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/portal/sign-in")

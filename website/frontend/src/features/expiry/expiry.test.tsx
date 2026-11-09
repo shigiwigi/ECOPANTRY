@@ -37,6 +37,7 @@ function renderExpiry(user: StaffUser, { isPreview = false } = {}) {
     checkSession: vi.fn(),
     signIn: vi.fn(),
     signOut: vi.fn(),
+    setSession: vi.fn(),
     setPreviewRole: null,
   }
   const router = createMemoryRouter(routes, { initialEntries: ["/portal/expiry"] })
@@ -132,7 +133,7 @@ describe("expiry helpers", () => {
 describe("Expiry page", () => {
   it("shows summary tiles and the near-expiry table with warning styling", async () => {
     api()
-    renderExpiry(staff("food_inspector"))
+    renderExpiry(staff("inspector"))
 
     expect(await screen.findByRole("heading", { name: "Expiry and FEFO", level: 1 })).toBeInTheDocument()
     const table = await screen.findByRole("table")
@@ -147,7 +148,7 @@ describe("Expiry page", () => {
   it("changes the window and refetches", async () => {
     api()
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
     await screen.findByRole("table")
 
     await user.click(screen.getByRole("button", { name: "14 days" }))
@@ -224,7 +225,7 @@ describe("FEFO panel", () => {
   it("lists the batches in order and flags expired stock as not to be used", async () => {
     api({ fefo: () => json({ ...fefoResult, requested: null, pick: null, allocated: null, shortfall: null, sufficient: null }) })
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
 
     await choose(user)
 
@@ -242,7 +243,7 @@ describe("FEFO panel", () => {
   it("asks for a pick list when an amount is entered", async () => {
     api()
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
 
     await choose(user)
     await user.type(screen.getByLabelText(/Amount needed/), "3")
@@ -257,7 +258,7 @@ describe("FEFO panel", () => {
       fefo: () => json({ ...fefoResult, requested: "50", pick: [], allocated: "5.500", shortfall: "44.500", sufficient: false }),
     })
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
 
     await choose(user)
     await user.type(screen.getByLabelText(/Amount needed/), "50")
@@ -268,7 +269,7 @@ describe("FEFO panel", () => {
   it("rejects an invalid amount without asking the server", async () => {
     api()
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
 
     await choose(user)
     await user.type(screen.getByLabelText(/Amount needed/), "abc")
@@ -280,7 +281,7 @@ describe("FEFO panel", () => {
   it("explains an ingredient with no usable batches", async () => {
     api({ fefo: () => json({ ...fefoResult, usable: [], expired: [], requested: null, pick: null, allocated: null, shortfall: null, sufficient: null }) })
     const user = userEvent.setup()
-    renderExpiry(staff("shopkeeper"))
+    renderExpiry(staff("storekeeper"))
 
     await choose(user)
 

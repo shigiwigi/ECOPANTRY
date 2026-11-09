@@ -18,7 +18,7 @@ import { fieldProps, problemText, TD, TH } from "./helpers"
 export function PhRecords() {
   const { user, isPreview } = useAuth()
   // UX only: the backend allows recording with `ph.record` (administrators and shopkeepers).
-  const canRecord = user?.role === "admin" || user?.role === "shopkeeper"
+  const canRecord = user?.role === "admin" || user?.role === "storekeeper"
 
   if (isPreview) {
     return (

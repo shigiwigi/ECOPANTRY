@@ -58,6 +58,7 @@ function renderAt(path: string, user: StaffUser | null = null) {
     checkSession: vi.fn(),
     signIn: vi.fn(),
     signOut: vi.fn(),
+    setSession: vi.fn(),
     setPreviewRole: null,
   }
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -168,8 +169,8 @@ describe("record forms", () => {
 
   it("lists the enquiries module for administrators only", () => {
     expect(modulesForRole("admin").some((module) => module.id === "enquiries")).toBe(true)
-    expect(modulesForRole("shopkeeper").some((module) => module.id === "enquiries")).toBe(false)
-    expect(modulesForRole("food_inspector").some((module) => module.id === "enquiries")).toBe(false)
+    expect(modulesForRole("storekeeper").some((module) => module.id === "enquiries")).toBe(false)
+    expect(modulesForRole("inspector").some((module) => module.id === "enquiries")).toBe(false)
   })
 })
 
@@ -180,7 +181,7 @@ describe("waste page records", () => {
     api((call) =>
       call.url.includes("/waste/records") ? json(page([WASTE_ROW])) : call.url.includes("/waste/summary") ? json(SUMMARY) : null,
     )
-    renderAt("/portal/waste", staff("shopkeeper"))
+    renderAt("/portal/waste", staff("storekeeper"))
 
     const table = await screen.findByRole("table", { name: /waste records/i })
     expect(within(table).getByText("Mould on the loaf")).toBeInTheDocument()
@@ -198,7 +199,7 @@ describe("waste page records", () => {
       if (call.url.includes("/waste/summary")) return json({ ...SUMMARY, records: 0, weight_kg: "0" })
       return null
     })
-    renderAt("/portal/waste", staff("shopkeeper"))
+    renderAt("/portal/waste", staff("storekeeper"))
     const form = await screen.findByRole("form", { name: "Record waste" })
 
     await user.click(within(form).getByRole("button", { name: "Record waste" }))
@@ -244,7 +245,7 @@ describe("waste page records", () => {
     api((call) =>
       call.url.includes("/waste/records") ? json(page([WASTE_ROW])) : call.url.includes("/waste/summary") ? json(SUMMARY) : null,
     )
-    renderAt("/portal/waste", staff("food_inspector"))
+    renderAt("/portal/waste", staff("inspector"))
 
     expect(await screen.findByRole("table", { name: /waste records/i })).toBeInTheDocument()
     expect(screen.queryByRole("form", { name: "Record waste" })).not.toBeInTheDocument()
@@ -285,7 +286,7 @@ describe("pH page records", () => {
 
   it("lists measurements with the experimental warning and no verdict", async () => {
     api((call) => (call.url.includes("/ph/records") ? json(page([PH_ROW])) : null))
-    renderAt("/portal/ph", staff("food_inspector"))
+    renderAt("/portal/ph", staff("inspector"))
 
     const table = await screen.findByRole("table", { name: /pH measurements/i })
     expect(within(table).getByText("Sourdough starter")).toBeInTheDocument()
@@ -302,7 +303,7 @@ describe("pH page records", () => {
       if (call.method === "POST") return json(PH_ROW, 201)
       return call.url.includes("/ph/records") ? json(page([])) : null
     })
-    renderAt("/portal/ph", staff("shopkeeper"))
+    renderAt("/portal/ph", staff("storekeeper"))
     const form = await screen.findByRole("form", { name: "Record a measurement" })
 
     await user.click(within(form).getByRole("button", { name: "Record measurement" }))
@@ -351,7 +352,7 @@ describe("audit log page", () => {
       const filtered = call.url.includes("action=waste.recorded")
       return json(page(filtered ? [EVENT] : [EVENT, { ...EVENT, id: 8, actor: null, actor_type: "cli", action: "employee.created", target_type: null, target_id: null }]))
     })
-    renderAt("/portal/audit", staff("food_inspector"))
+    renderAt("/portal/audit", staff("inspector"))
 
     const table = await screen.findByRole("table", { name: /audit events/i })
     expect(within(table).getAllByRole("row")).toHaveLength(3)
@@ -374,7 +375,7 @@ describe("audit log page", () => {
 
   it("refuses shopkeepers", async () => {
     api(() => null)
-    renderAt("/portal/audit", staff("shopkeeper"))
+    renderAt("/portal/audit", staff("storekeeper"))
     await waitFor(() => expect(screen.queryByLabelText("Event")).not.toBeInTheDocument())
     expect(calls.some((c) => c.url.startsWith("/api/v1/audit"))).toBe(false)
   })
@@ -414,7 +415,7 @@ describe("enquiries inbox", () => {
 
   it("is closed to other roles", async () => {
     api(() => null)
-    renderAt("/portal/enquiries", staff("food_inspector"))
+    renderAt("/portal/enquiries", staff("inspector"))
     await waitFor(() => expect(screen.queryByText("Unread only")).not.toBeInTheDocument())
     expect(calls.some((c) => c.url.startsWith("/api/v1/enquiries"))).toBe(false)
   })
