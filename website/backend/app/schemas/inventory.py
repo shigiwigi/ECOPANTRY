@@ -36,6 +36,10 @@ class IngredientOut(BaseModel):
     name: str
     unit: UnitOut
     reorder_level: Decimal | None = Field(description="Decimal string in the ingredient's unit; null: no low-stock warning.")
+    total_remaining: Decimal = Field(
+        description="Remaining quantity across batches that haven't expired, in the ingredient's unit."
+    )
+    low_stock: bool = Field(description="True when `reorder_level` is set and `total_remaining` is at or below it.")
     notes: str | None
     is_active: bool
     deactivated_at: datetime | None
@@ -43,8 +47,11 @@ class IngredientOut(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_ingredient(cls, ingredient: Ingredient) -> "IngredientOut":
+    def from_ingredient(cls, ingredient: Ingredient, total_remaining: Decimal = Decimal(0)) -> "IngredientOut":
+        level = ingredient.reorder_level
         return cls(
+            total_remaining=total_remaining,
+            low_stock=level is not None and total_remaining <= level,
             id=ingredient.id,
             name=ingredient.name,
             unit=UnitOut.from_unit(ingredient.unit),

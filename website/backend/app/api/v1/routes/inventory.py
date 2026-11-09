@@ -7,10 +7,12 @@ List endpoints follow the shared conventions in `app/api/v1/pagination.py`.
 """
 
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.api.v1.pagination import Ordering, PageParamsDep, SearchQuery, clean_search, paginate, sort_dependency
 from app.auth.dependencies import require_permission
@@ -30,6 +32,7 @@ from app.schemas.inventory import (
     UnitOut,
 )
 from app.schemas.pagination import Page
+from app.services import batches as batch_service
 from app.services import inventory as service
 from app.services.audit import ClientInfo
 
@@ -63,6 +66,15 @@ StorageAreaSort = sort_dependency(
 )
 
 
+def _ingredient_out(db: Session, ingredient: Ingredient) -> IngredientOut:
+    return _ingredient_outs(db, [ingredient])[0]
+
+
+def _ingredient_outs(db: Session, ingredients: list[Ingredient]) -> list[IngredientOut]:
+    totals = batch_service.stock_totals(db, [i.id for i in ingredients])
+    return [IngredientOut.from_ingredient(i, totals.get(i.id, Decimal(0))) for i in ingredients]
+
+
 # --- units ------------------------------------------------------------------
 
 
@@ -86,12 +98,12 @@ def list_ingredients(
 ) -> Page[IngredientOut]:
     statement = service.ingredients_query(active=active, search=clean_search(q), unit=unit)
     items, total = paginate(db, statement, page, order)
-    return Page.of([IngredientOut.from_ingredient(i) for i in items], total=total, limit=page.limit, offset=page.offset)
+    return Page.of(_ingredient_outs(db, items), total=total, limit=page.limit, offset=page.offset)
 
 
 @router.get("/ingredients/{ingredient_id}", response_model=IngredientOut, summary="Get one ingredient", responses=NOT_FOUND)
 def get_ingredient(ingredient_id: uuid.UUID, _: Viewer, db: SessionDep) -> IngredientOut:
-    return IngredientOut.from_ingredient(service.get_ingredient(db, ingredient_id))
+    return _ingredient_out(db, service.get_ingredient(db, ingredient_id))
 
 
 @router.post(
@@ -106,7 +118,7 @@ def create_ingredient(body: IngredientCreate, request: Request, principal: Manag
         db, body.model_dump(), by=principal.employee, client=ClientInfo.from_request(request)
     )
     db.commit()
-    return IngredientOut.from_ingredient(ingredient)
+    return _ingredient_out(db, ingredient)
 
 
 @router.patch(
@@ -122,7 +134,7 @@ def update_ingredient(
     changes = body.model_dump(include=body.model_fields_set)
     service.update_ingredient(db, ingredient, changes, by=principal.employee, client=ClientInfo.from_request(request))
     db.commit()
-    return IngredientOut.from_ingredient(ingredient)
+    return _ingredient_out(db, ingredient)
 
 
 @router.post(
@@ -135,7 +147,7 @@ def deactivate_ingredient(ingredient_id: uuid.UUID, request: Request, principal:
     ingredient = service.get_ingredient(db, ingredient_id)
     service.set_ingredient_active(db, ingredient, False, by=principal.employee, client=ClientInfo.from_request(request))
     db.commit()
-    return IngredientOut.from_ingredient(ingredient)
+    return _ingredient_out(db, ingredient)
 
 
 @router.post(
@@ -148,7 +160,7 @@ def reactivate_ingredient(ingredient_id: uuid.UUID, request: Request, principal:
     ingredient = service.get_ingredient(db, ingredient_id)
     service.set_ingredient_active(db, ingredient, True, by=principal.employee, client=ClientInfo.from_request(request))
     db.commit()
-    return IngredientOut.from_ingredient(ingredient)
+    return _ingredient_out(db, ingredient)
 
 
 # --- storage areas ----------------------------------------------------------
