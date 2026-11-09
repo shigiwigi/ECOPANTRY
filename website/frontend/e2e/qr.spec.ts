@@ -224,10 +224,33 @@ test.describe("scanner camera problems", () => {
 test.describe("QR labels", () => {
   test("prints only the labels, on white, whatever the theme", async ({ page }) => {
     await page.addInitScript(() => window.localStorage.setItem("ecopantry-theme", "dark"))
+    // The picker lists real batches that still have stock; this suite has no backend, so answer the list here.
+    await page.route("**/api/v1/batches?*", (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "b1000000-0000-4000-8000-000000000001",
+              label_code: "K7M2Q9X4TR",
+              ingredient: { id: "i1000000-0000-4000-8000-000000000001", name: "Strong white flour", unit: "kg" },
+              storage_area: null,
+              received_on: "2026-11-01",
+              expiry_on: "2026-11-20",
+              quantity: "25.000",
+              remaining_quantity: "20.000",
+              status: "available",
+              notes: null,
+              created_at: "2026-11-01T08:00:00Z",
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        },
+      }),
+    )
     await page.goto("/portal/qr")
-    await page.getByLabel("Ingredient").fill("Strong white flour")
-    await page.getByRole("button", { name: "Test code" }).click()
-    await page.getByLabel("Use by (optional)").fill("2026-11-20")
+    await page.getByLabel("Batch", { exact: true }).selectOption({ label: "Strong white flour · K7M2Q-9X4TR · use by 20 Nov 2026" })
     await page.getByLabel("Copies").fill("4")
     await page.getByRole("button", { name: "Add to sheet" }).click()
     await expect(page.getByRole("button", { name: "Print 4 labels" })).toBeEnabled()
