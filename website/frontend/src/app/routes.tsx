@@ -12,6 +12,7 @@ import UnauthorizedUserPage from "@/pages/public/UnauthorizedUserPage"
 const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = {
   dashboard: () => import("@/pages/portal/DashboardPage"),
   catalogue: () => import("@/pages/portal/CataloguePage"),
+  expiry: () => import("@/pages/portal/ExpiryPage"),
   scanner: () => import("@/pages/portal/ScannerPage"),
   qr: () => import("@/pages/portal/LabelsPage"),
   settings: () => import("@/pages/portal/SettingsPage"),
