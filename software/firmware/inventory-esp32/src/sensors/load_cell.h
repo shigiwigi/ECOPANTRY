@@ -14,7 +14,8 @@ class LoadCell {
   void update();
 
   bool available() const { return available_; }
-  bool ok() const { return available_ && hasValue_; }
+  // A fresh reading: the HX711 is there and produced a sample within kLoadCellStaleMs.
+  bool ok() const;
   float grams() const { return grams_; }
   float factor() const { return factor_; }
 
@@ -27,5 +28,6 @@ class LoadCell {
   bool available_ = false;
   bool hasValue_ = false;
   float grams_ = 0;
+  uint32_t lastSampleMs_ = 0;
   float factor_ = 1;
 };

@@ -25,6 +25,11 @@ void LoadCell::update() {
   if (value < 0 && value > -0.5f) value = 0.0f;  // tare drift around zero, as in the sketch
   grams_ = value;
   hasValue_ = average.size() > 0;
+  lastSampleMs_ = millis();
+}
+
+bool LoadCell::ok() const {
+  return available_ && hasValue_ && millis() - lastSampleMs_ < config::kLoadCellStaleMs;
 }
 
 bool LoadCell::tare() {
