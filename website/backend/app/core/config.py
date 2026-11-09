@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     # Sensor stations (see docs/HARDWARE_INTEGRATION.md). A station only uploads during a live
     # session, so an idle station sends nothing and Render and Neon can sleep.
     live_session_minutes: int = Field(default=15, ge=1, le=240, description="Session length after an authorised card tap.")
+    camera_device_secret: SecretStr | None = Field(default=None, description="Shared secret the ESP32-CAM sends to push frames. Unset disables the camera relay.")
     device_boot_session_minutes: int = Field(default=5, ge=1, le=60, description="Session length after the station powers on.")
     device_daily_live_minutes: int = Field(default=240, ge=1, le=24 * 60, description="Live time a station may use per UTC day.")
     device_report_interval_seconds: int = Field(default=3, ge=2, le=3600, description="How often a live station uploads.")

@@ -48,3 +48,4 @@ coverage/
 
 # Neon CLI local context (project id); never commit connection details
 .neon
+software/firmware/camera-esp32/include/secrets.h

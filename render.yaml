@@ -27,6 +27,9 @@ services:
       - key: LOG_LEVEL
         value: INFO
       # Neon suspends its compute when idle; give the first connection time to wake it.
+      # Shared secret for the ESP32-CAM; set it in the Render dashboard, never here.
+      - key: CAMERA_DEVICE_SECRET
+        sync: false
       - key: DATABASE_CONNECT_TIMEOUT
         value: "15"
       # Not secrets. The only browser origins allowed to call the API with the session cookie.
