@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CloudOff, LineChart as LineChartIcon } from "lucide-react"
 import { useId, useState } from "react"
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { EmptyState } from "@/components/common/EmptyState"
 import { Button } from "@/components/ui/button"
 import { ApiError } from "@/lib/api/client"
@@ -19,6 +19,13 @@ interface HistoryChartProps {
   decimals: number
   color: ChartColor
   live: boolean
+  /** Alert limits drawn as dashed lines, in the chart's own unit. */
+  references?: ChartReference[]
+}
+
+export interface ChartReference {
+  value: number
+  label: string
 }
 
 function formatTick(iso: string, range: HistoryRange): string {
@@ -31,7 +38,7 @@ function formatWhen(iso: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(iso))
 }
 
-export function HistoryChart({ deviceId, metric, title, unit, decimals, color, live }: HistoryChartProps) {
+export function HistoryChart({ deviceId, metric, title, unit, decimals, color, live, references = [] }: HistoryChartProps) {
   const [range, setRange] = useState<HistoryRange>("24h")
   const history = useQuery(historyQuery(deviceId, metric, range, live))
   const headingId = useId()
@@ -101,7 +108,10 @@ export function HistoryChart({ deviceId, metric, title, unit, decimals, color, l
                   />
                   <YAxis
                     width={48}
-                    domain={["auto", "auto"]}
+                    domain={[
+                      (dataMin: number) => Math.min(dataMin, ...references.map((r) => r.value)),
+                      (dataMax: number) => Math.max(dataMax, ...references.map((r) => r.value)),
+                    ]}
                     tickFormatter={(value: number) => value.toFixed(decimals)}
                     stroke="var(--muted-foreground)"
                     tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
@@ -134,6 +144,17 @@ export function HistoryChart({ deviceId, metric, title, unit, decimals, color, l
                     fillOpacity={0.15}
                     isAnimationActive={false}
                   />
+                  {references.map((reference) => (
+                    <ReferenceLine
+                      key={`${reference.label}-${reference.value}`}
+                      y={reference.value}
+                      stroke="var(--warning)"
+                      strokeDasharray="6 4"
+                      strokeWidth={1.5}
+                      ifOverflow="extendDomain"
+                      label={{ value: reference.label, position: "insideTopRight", fill: "var(--warning)", fontSize: 12 }}
+                    />
+                  ))}
                   <Line dataKey="avg" type="monotone" stroke={stroke} strokeWidth={2} dot={false} isAnimationActive={false} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -141,6 +162,7 @@ export function HistoryChart({ deviceId, metric, title, unit, decimals, color, l
             <figcaption className={cn("mt-2 text-xs text-muted-foreground")}>
               {summary(points.map((p) => p.avg), points.map((p) => p.band), decimals, unit)} Line: average; band:
               lowest to highest in each {bucketLabel(history.data?.bucket_seconds ?? 0)}.
+              {references.length > 0 && ` Dashed line: ${references.map((r) => r.label).join("; ")}.`}
             </figcaption>
           </figure>
         )}

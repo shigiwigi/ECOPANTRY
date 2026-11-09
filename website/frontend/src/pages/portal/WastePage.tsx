@@ -1,3 +1,4 @@
+import { BinFullBanner } from "@/features/alerts/BinFullBanner"
 import { SensorPage, type MetricSpec } from "@/features/sensors/SensorPage"
 
 const METRICS: MetricSpec[] = [
@@ -17,7 +18,8 @@ export default function WastePage() {
     <SensorPage
       moduleId="waste"
       metrics={METRICS}
-      footnote="Fill level needs the ultrasonic sensor, which isn't fitted yet. Waste records with category, reason and employee come later."
+      notice={<BinFullBanner />}
+      footnote="The bin's fullness comes from its weight alone, and needs calibrating against the actual bin. Waste records with category, reason and employee come later."
     />
   )
 }

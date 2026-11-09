@@ -116,11 +116,29 @@ Experimental everywhere: on the LCD, in the API (`ph_value` field description) a
 
 ## Waste bin nearly full (local warning)
 
-The station warns on its own when the bin is nearly full, with no network or live session needed. A filtered load-cell weight of 2.0 kg or more for 5 s shows `BIN NEARLY FULL` on the LCD (one of the rotating pages), blinks the red LED and beeps once (at most once per 10 minutes). It clears below 1.5 kg (hysteresis). Readings are ignored while the load cell isn't answering. Thresholds: `kBinFullGrams` and `kBinClearGrams` in `include/config.h`. Calibrate the load cell against the actual bin first. The portal alert at the same weight is a separate backend feature (below).
+The station warns on its own when the bin is nearly full, with no network or live session needed. A filtered load-cell weight of 2.0 kg or more for 5 s shows `BIN NEARLY FULL` on the LCD (one of the rotating pages), blinks the red LED and beeps once (at most once per 10 minutes). It clears below 1.5 kg (hysteresis). Readings are ignored while the load cell isn't answering. Thresholds: `kBinFullGrams` and `kBinClearGrams` in `include/config.h`. Calibrate the load cell against the actual bin first. The portal alert at the same weight is described in "Thresholds and alerts" below.
+
+## Thresholds and alerts
+
+The backend evaluates thresholds on readings (`app/services/alerts.py`), inside the same transaction as `POST /device/readings`, so only during a live session. Only the newest reading of an upload is evaluated. A threshold watches one metric (`temperature_c`, `humidity_pct`, `weight_g`) with exactly one limit (max or min), an optional `clear_value` (hysteresis), a severity, and one station or all.
+
+- A value at or beyond the limit opens one alert per (threshold, station); further readings update its `last_value`.
+- A missing value (failed sensor, stored as NULL) never opens or resolves anything.
+- The alert resolves when the value passes `clear_value` (strictly). Between the limit and `clear_value` it stays.
+- Acknowledging (storekeeper, administrator) records who and when; the alert stays unresolved until the reading recovers.
+- Opening and resolving are audited with actor type `device` (`alert.opened`, `alert.resolved`); acknowledging and threshold changes are audited with the employee.
+
+The seeded threshold is "Waste bin nearly full": `weight_g` at or above 2000 g, clears below 1500 g, all stations (values are in grams; the portal shows kg). Alerts are portal-only: no email or SMS.
+
+| Endpoint | Permission |
+|---|---|
+| `GET /alerts?status=open\|acknowledged\|resolved\|active&device_id=&metric=` (paginated, newest first), `GET /alerts/summary` | `alerts.view` (every role) |
+| `POST /alerts/{id}/acknowledge` | `alerts.acknowledge` (administrator, storekeeper) |
+| `GET /thresholds` | `alerts.view` |
+| `POST /thresholds`, `PATCH /thresholds/{id}`, `POST /thresholds/{id}/enable\|disable` | `thresholds.manage` (administrator) |
 
 ## Not built yet
 
-- **Thresholds and alerts on readings** (roadmap M9 criterion 2), including the waste-bin alert: when the bin's load cell reads about **2 kg** the portal opens a "Waste bin nearly full" alert (it clears below 1.5 kg).
 - **Waste records and pH records** (M10, M11).
 
 Dropped from the project (2026-11-09): the HC-SR04 ultrasonic fill-level sensor and the ESP32-CAM. The bin's fullness comes from its weight alone.
