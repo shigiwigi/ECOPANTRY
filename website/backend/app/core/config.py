@@ -3,10 +3,13 @@
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+import json
+import re
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
@@ -17,6 +20,9 @@ API_V1_PREFIX = "/api/v1"
 # Only PostgreSQL through psycopg 3 is supported. Plain postgres URLs are mapped to it.
 _DRIVER = "postgresql+psycopg"
 _POSTGRES_ALIASES = {"postgres", "postgresql", _DRIVER}
+
+# Firebase project IDs: lower-case letters, digits and hyphens.
+_FIREBASE_PROJECT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{3,38}[a-z0-9]$")
 
 
 class Settings(BaseSettings):
@@ -45,6 +51,16 @@ class Settings(BaseSettings):
     login_max_failed_attempts: int = Field(default=5, ge=1, le=100)
     login_lockout_minutes: int = Field(default=15, ge=1, le=24 * 60)
 
+    # Browser origins allowed to call the API with the session cookie (CORS with credentials).
+    # Exact origins only (scheme://host[:port]); never "*". Production sets the Firebase Hosting
+    # origins in render.yaml. In .env: comma-separated, or a JSON list.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
+    # Firebase project whose ID tokens POST /auth/google accepts. Not a secret. Set it empty to
+    # turn Google sign-in off (the endpoint then answers 503); password sign-in is unaffected.
+    firebase_project_id: str | None = "ecopantry-a7342"
+
     # Sensor stations (see docs/HARDWARE_INTEGRATION.md). A station only uploads during a live
     # session, so an idle station sends nothing and Render and Neon can sleep.
     live_session_minutes: int = Field(default=15, ge=1, le=240, description="Session length after an authorised card tap.")
@@ -58,6 +74,44 @@ class Settings(BaseSettings):
         if self.environment == "production" and self.session_cookie_secure is False:
             raise ValueError("SESSION_COOKIE_SECURE can't be false in production; sessions need HTTPS.")
         return self
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                return json.loads(text)
+            return [part.strip() for part in text.split(",") if part.strip()]
+        return value
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _exact_origins(cls, origins: list[str]) -> list[str]:
+        for origin in origins:
+            parts = urlsplit(origin)
+            if (
+                "*" in origin
+                or parts.scheme not in ("http", "https")
+                or not parts.hostname
+                or parts.path
+                or parts.query
+                or parts.fragment
+                or parts.username
+            ):
+                raise ValueError(f"CORS_ORIGINS must be exact origins like https://example.com, not {origin!r}.")
+        return origins
+
+    @field_validator("firebase_project_id", mode="before")
+    @classmethod
+    def _empty_project_is_none(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+            if not _FIREBASE_PROJECT_ID.match(value):
+                raise ValueError("FIREBASE_PROJECT_ID must be a Firebase project ID such as my-project-1234.")
+        return value
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -74,6 +128,10 @@ class Settings(BaseSettings):
         if not url.database:
             raise ValueError("DATABASE_URL must name a database.")
         return url.set(drivername=_DRIVER).render_as_string(hide_password=False)
+
+    @property
+    def google_sign_in_enabled(self) -> bool:
+        return self.firebase_project_id is not None
 
     @property
     def docs_enabled(self) -> bool:

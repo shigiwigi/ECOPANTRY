@@ -37,9 +37,10 @@ have not all been run on the real URLs yet.
 - **The website and the API are on different sites**, so:
   - The production build sets `VITE_API_BASE_URL=https://ecopantry-api.onrender.com/api/v1`
     (`src/lib/api/client.ts`).
-  - The API allows exactly the Firebase origins (and the local dev server)
-    through CORS with credentials (`app/factory.py`). Any other origin gets no
-    CORS headers.
+  - The API allows exactly the Firebase origins through CORS with credentials
+    (`CORS_ORIGINS` in `render.yaml`, read by `app/factory.py`; the local
+    default is only the Vite dev server). Any other origin gets no CORS
+    headers, and wildcards are refused at start-up.
   - The session cookie is `__Host-ecopantry_session`: Secure, HttpOnly,
     **SameSite=None** (`app/auth/cookies.py`), so the browser sends it on the
     cross-site API calls. Every unsafe request must also carry the
@@ -99,6 +100,8 @@ git-ignored.
 | `PYTHON_VERSION` | `3.14.3` | `render.yaml` |
 | `LOG_LEVEL` | `INFO` | `render.yaml` |
 | `DATABASE_CONNECT_TIMEOUT` | `15` | `render.yaml` |
+| `CORS_ORIGINS` | `https://ecopantry-a7342.web.app,https://ecopantry-a7342.firebaseapp.com` | `render.yaml` (not a secret). Add an origin here if the site gets another address, such as a custom domain. |
+| `FIREBASE_PROJECT_ID` | `ecopantry-a7342` | `render.yaml` (not a secret). Google ID tokens for any other project are refused; empty turns Google sign-in off. |
 
 Leave everything else at the defaults in `app/core/config.py` (60 min idle /
 12 h absolute sessions, 5 failed sign-ins → 15 min lockout, sensor-station
@@ -160,8 +163,9 @@ No tables need creating by hand. The API runs the migrations itself.
 4. **Apply**. The first build takes a few minutes. In the service's **Logs**
    you should see Alembic run every migration, then Uvicorn start.
 5. Note the service address (`https://ecopantry-api.onrender.com`). Render adds
-   a suffix if the name is taken; if it differs, update `VITE_API_BASE_URL`
-   and the CORS origins.
+   a suffix if the name is taken; if it differs, update `VITE_API_BASE_URL`.
+   If the website's address differs from the Firebase defaults, update
+   `CORS_ORIGINS` in `render.yaml`.
 6. Check it in a browser:
    - `https://<render-host>/api/v1/health` → `{"status":"ok",…}`
    - `https://<render-host>/api/v1/health/ready` → `{"status":"ready","database":"ok"}`
@@ -212,9 +216,12 @@ not in group chats.
 
 ### Staff accounts for teammates
 
-Administrators add Storekeeper and Inspector accounts on the portal's
-**Users** page. Staff can then sign in with Google (if their Google account
-uses the same email) or with a password set by an administrator.
+Administrators add accounts on the portal's **Users** page (name, email,
+role, and optionally an initial password of 12–128 characters). Staff then
+sign in with Google (if their Google account uses the same email) or with
+the password the administrator set. There is no sign-up: a Google account
+that no administrator has added is refused. Remove access by deactivating
+the account; accounts are never deleted.
 
 ### Sensor station
 

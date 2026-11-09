@@ -87,10 +87,27 @@ Account lifecycle:
                                         └──────reactivate───────┘
 ```
 
-- Employees are never deleted, so audit history keeps its actor. Deactivation
-  is the way to remove access. It revokes every open session immediately.
-- An administrator can't deactivate their own account, and the last active
-  administrator can't be deactivated, so the portal can't lock itself out.
+- Accounts are only ever created by an administrator (portal Users page,
+  `POST /employees`) or the bootstrap CLI. There is no self-registration: an
+  email address alone never creates, claims or sets the password of an
+  account.
+- An account created without a password gets the Argon2 hash of a random
+  secret that is thrown away, so it can only sign in with Google (same email)
+  until an administrator sets a password.
+- Employees are never deleted (there is no delete endpoint), so audit history
+  keeps its actor. Deactivation is the way to remove access. It revokes every
+  open session immediately. A deactivated account is listed (`GET /employees`
+  returns everyone; `?active=false` only deactivated ones) so it can be
+  reactivated; creating a new account with its email answers `409`.
+- An administrator can't deactivate their own account or change their own
+  role, and the last active administrator can't be deactivated or demoted, so
+  the portal can't lock itself out.
+- Changing a role (`PATCH /employees/{id}`, `employee.role_changed` in the
+  audit log with the old and new role) revokes all of that employee's
+  sessions. Permissions are read from the role on every request anyway; the
+  sign-out makes the portal load the new role. The sessions are marked
+  `replaced` because the `revoked_reason` CHECK constraint has no
+  `role_changed` value yet (adding one needs a migration).
 - RFID cards (README phase 9, roadmap M10) will be a separate `rfid_cards` table referencing
   `employees`. If some employees should have RFID but no portal login,
   `password_hash` can be made nullable then; that change is additive.
@@ -177,24 +194,55 @@ The `.view` rows match the role lists in the frontend's
 `src/config/portal-modules.ts`. Most permissions protect endpoints that don't
 exist yet; each future endpoint declares the one it needs.
 
+## Google sign-in
+
+`POST /auth/google` takes a Firebase Authentication ID token from the
+website's "Continue with Google" button. Firebase Admin (initialised lazily
+for `FIREBASE_PROJECT_ID`) checks its signature against Google's keys, the
+audience/issuer (our project) and the expiry; the token must also say
+`email_verified`. The token is never decoded without that check. Then:
+
+- an **active** employee with that email (case-insensitive) gets a normal
+  session, exactly as after a password sign-in (`auth.google_login_succeeded`);
+- no employee with that email: `403 google_account_not_staff`, audited
+  without the email;
+- a deactivated employee: `403 account_disabled` (Google has proved the person
+  owns the email, so this reveals nothing to a stranger).
+
+Google sign-in never creates or links accounts, and the password lockout
+doesn't apply to it. With `FIREBASE_PROJECT_ID` empty it answers `503
+google_sign_in_unavailable`.
+
 ## Sessions, cookies and CSRF
 
 - Login creates a 256-bit random token (`secrets.token_urlsafe(32)`). The
   browser gets it in an HttpOnly cookie; the database keeps only its SHA-256.
   A database leak therefore doesn't reveal usable session tokens.
-- Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` = absolute lifetime.
-  With `SESSION_COOKIE_SECURE=true` (required in production) it is also
-  `Secure` and named `__Host-ecopantry_session`, which browsers only accept
-  from HTTPS with no `Domain`.
+- Cookie: `HttpOnly`, `Path=/`, `Max-Age` = absolute lifetime. With
+  `SESSION_COOKIE_SECURE=true` (required in production) it is also `Secure`,
+  named `__Host-ecopantry_session` (browsers only accept that from HTTPS with
+  no `Domain`) and `SameSite=None`, because the website (Firebase Hosting) and
+  the API (Render) are different sites and the browser must send the cookie
+  on the website's API calls. In local development it is `SameSite=Lax` and
+  not Secure.
 - Lifetime: 60 minutes idle and 12 hours absolute by default (one shift),
   both configurable.
-- CSRF: `SameSite=Lax` already stops cross-site POSTs from carrying the
-  cookie. On top of that, every authenticated request with an unsafe method
-  (POST, PUT, PATCH, DELETE) must send `X-CSRF-Token` equal to the session's
-  CSRF token. The token is returned in the JSON of `/auth/login` and
-  `/auth/me` and kept in memory by the frontend, never in browser storage.
-  The login endpoint only accepts `application/json`, which a cross-site HTML
-  form can't send, and there is no CORS, so other sites can't read responses.
+- CSRF: with `SameSite=None` the cookie travels on cross-site requests, so
+  the `X-CSRF-Token` header is what protects changes: every authenticated
+  request with an unsafe method (POST, PUT, PATCH, DELETE) must send it, equal
+  to the session's CSRF token. The token is returned in the JSON of
+  `/auth/login` and `/auth/me` and kept in memory by the frontend, never in
+  browser storage. Another site can't read it, and can't send the custom
+  header cross-origin without passing CORS.
+- CORS: only the exact origins in `CORS_ORIGINS` (the Firebase Hosting
+  origins in production, the Vite dev server by default) get CORS headers,
+  with credentials, on every response including errors. Any other origin gets
+  none, so its pages can neither read API responses nor send the CSRF header.
+  Wildcards are refused at start-up. (Unhandled 500 errors are answered
+  outside the CORS middleware and carry no CORS headers; the browser then
+  reports a network error.)
+- The login endpoint only accepts `application/json`, which a cross-site HTML
+  form can't send.
 - Brute force: 5 wrong passwords lock the account for 15 minutes (both
   configurable). While locked the API answers 429 without checking the
   password. Trade-off: this reveals that an email belongs to an account after
@@ -202,6 +250,9 @@ exist yet; each future endpoint declares the one it needs.
   belongs in the reverse proxy at deployment.
 - Unknown emails still run an Argon2 verification against a dummy hash so
   response time doesn't reveal whether an account exists.
+- A wrong password and an unknown email get the same `401
+  invalid_credentials`, so the answer doesn't reveal which emails have
+  accounts.
 - A correct password on a deactivated account gets 403 "This account has
   been deactivated". Only someone who knows the password learns the status.
 

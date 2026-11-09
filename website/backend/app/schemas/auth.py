@@ -13,6 +13,10 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class GoogleSignInRequest(BaseModel):
+    id_token: str = Field(min_length=1, max_length=8192, description="Firebase Authentication ID token from Google sign-in.")
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=1024)
     new_password: str = Field(min_length=1, max_length=1024)

@@ -1,27 +1,22 @@
-"""Staff sign-in, sign-up, Google OAuth exchange, sign-out, session and password change."""
+"""Staff sign-in (password or Google), sign-out, current session and password change.
 
-import logging
+There is no self-registration: an administrator creates every staff account
+(portal Users page or `python -m app.cli`). Google sign-in only signs in an
+existing, active employee whose email Google has verified.
+"""
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel
-from sqlalchemy import select
-import firebase_admin
-from firebase_admin import auth as fb_auth
+from fastapi import APIRouter, Request, Response, status
 
 from app.auth.cookies import clear_session_cookie, set_session_cookie
 from app.auth.dependencies import CSRF_HEADER, CurrentPrincipal, SettingsDep
+from app.auth.google import verify_google_id_token
 from app.auth.service import (
-    AccountDisabledError,
-    AccountLockedError,
-    AccountNotFoundError,
     CsrfError,
     Principal,
-    WrongPasswordError,
     authenticate,
+    authenticate_google,
     change_own_password,
-    check_new_password,
     find_session,
-    hash_password,
     permissions_of,
     revoke_session,
     session_end_reason,
@@ -31,41 +26,12 @@ from app.auth.service import (
 )
 from app.core.security import tokens_match
 from app.db.session import SessionDep
-from app.models.auth import Employee, Role
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, SessionResponse, StaffUser
+from app.models.auth import Employee
+from app.schemas.auth import ChangePasswordRequest, GoogleSignInRequest, LoginRequest, SessionResponse, StaffUser
 from app.schemas.errors import ErrorResponse
 from app.services.audit import ClientInfo, record_event
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-FIREBASE_PROJECT_ID = "ecopantry-a7342"
-try:
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(options={"projectId": FIREBASE_PROJECT_ID})
-except Exception as exc:
-    logger.warning("Firebase Admin default init warning: %s", exc)
-
-
-class GoogleAuthRequest(BaseModel):
-    id_token: str
-
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    full_name: str | None = None
-
-
-def _cors_headers(request: Request) -> dict[str, str]:
-    origin = request.headers.get("origin")
-    if origin:
-        return {
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        }
-    return {}
 
 
 def _session_response(principal: Principal, settings: SettingsDep) -> SessionResponse:
@@ -76,205 +42,58 @@ def _session_response(principal: Principal, settings: SettingsDep) -> SessionRes
     )
 
 
-def _verify_google_token(id_token: str) -> dict:
-    """Verify a Firebase ID token: signature (Google's public keys), audience, issuer and expiry.
-
-    Never decode the token without checking its signature: the claims are
-    attacker-controlled until the signature is verified, so a hand-made token
-    could name any employee's email.
-    """
-    try:
-        claims = fb_auth.verify_id_token(id_token, check_revoked=False)
-    except Exception as err:
-        # The reason can include token contents; log only its type.
-        logger.info("Rejected a Google ID token (%s)", type(err).__name__)
-        raise ValueError("Invalid Google authentication token") from err
-    if claims.get("email_verified") is not True:
-        raise ValueError("Google account email is not verified")
-    return claims
-
-@router.post(
-    "/register",
-    response_model=SessionResponse,
-    summary="Register/claim pre-authorized staff account",
-)
-def register(
-    body: RegisterRequest,
-    request: Request,
-    response: Response,
-    db: SessionDep,
-    settings: SettingsDep,
+def _begin_session(
+    employee: Employee, action: str, request: Request, response: Response, db: SessionDep, settings: SettingsDep
 ) -> SessionResponse:
-    cors = _cors_headers(request)
-    normalized_email = body.email.strip().lower()
-
-    employee = db.scalar(
-        select(Employee).where(Employee.email == normalized_email)
-    )
-
-    # If the user is unlisted or disabled, throw 403 WITH explicit CORS headers
-    if not employee or employee.status != "active" or not employee.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="ordinary_user_no_permission",
-            headers=cors,
-        )
-
-    if employee.password_hash and not employee.password_hash.startswith("!"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account is already registered. Please sign in instead.",
-            headers=cors,
-        )
-
-    # Same password rules as a password change (raises a 400 with the reason).
-    check_new_password(body.password, normalized_email)
-
-    employee.password_hash = hash_password(body.password)
-    employee.last_login_at = utcnow()
-    employee.failed_login_attempts = 0
-    employee.locked_until = None
-
     client = ClientInfo.from_request(request)
+    # A browser signing in again gets a fresh session; the old one stops working.
+    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
+    if previous is not None:
+        revoke_session(previous, "replaced")
+
     auth_session, token = start_session(db, settings, employee, client)
-    record_event(db, "auth.registered", actor=employee, target=employee, client=client)
+    record_event(db, action, actor=employee, target=employee, client=client)
     db.commit()
 
     set_session_cookie(response, settings, token)
     principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
     return _session_response(principal, settings)
+
 
 @router.post(
     "/login",
     response_model=SessionResponse,
     summary="Sign in with email and password",
     responses={
-        401: {"model": ErrorResponse, "description": "Wrong password (`incorrect_password`)"},
-        403: {"model": ErrorResponse, "description": "Deactivated account (`account_disabled`)"},
-        404: {"model": ErrorResponse, "description": "Email not found (`account_not_found`)"},
+        401: {"model": ErrorResponse, "description": "Wrong email or password (`invalid_credentials`)"},
+        403: {"model": ErrorResponse, "description": "Correct password, deactivated account (`account_disabled`)"},
         429: {"model": ErrorResponse, "description": "Temporarily locked after repeated failures (`account_locked`)"},
     },
 )
-def login(
-    body: LoginRequest,
-    request: Request,
-    response: Response,
-    db: SessionDep,
-    settings: SettingsDep,
-) -> SessionResponse:
-    client = ClientInfo.from_request(request)
-    cors = _cors_headers(request)
+def login(body: LoginRequest, request: Request, response: Response, db: SessionDep, settings: SettingsDep) -> SessionResponse:
+    employee = authenticate(db, settings, body.email, body.password, ClientInfo.from_request(request))
+    return _begin_session(employee, "auth.login_succeeded", request, response, db, settings)
 
-    try:
-        employee = authenticate(db, settings, body.email, body.password, client)
-    except AccountNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="This account is not registered.",
-            headers=cors,
-        )
-    except WrongPasswordError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Please try again.",
-            headers=cors,
-        )
-    except AccountDisabledError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This account has been deactivated. Ask an administrator if you need access again.",
-            headers=cors,
-        )
-    except AccountLockedError:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed sign-in attempts. Wait a few minutes and try again.",
-            headers=cors,
-        )
-
-    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
-    if previous is not None:
-        revoke_session(previous, "replaced")
-
-    auth_session, token = start_session(db, settings, employee, client)
-    record_event(db, "auth.login_succeeded", actor=employee, target=employee, client=client)
-    db.commit()
-
-    set_session_cookie(response, settings, token)
-    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
-    return _session_response(principal, settings)
 
 @router.post(
     "/google",
     response_model=SessionResponse,
-    summary="Sign in with a verified Google Firebase ID token",
+    summary="Sign in an existing employee with a Google (Firebase) ID token",
     responses={
-        400: {"model": ErrorResponse, "description": "Google account missing verified email"},
-        401: {"model": ErrorResponse, "description": "Invalid or expired Firebase ID token"},
-        403: {"model": ErrorResponse, "description": "Account not authorized or deactivated"},
+        401: {"model": ErrorResponse, "description": "Token not signed by Google for this project, expired, or email unverified (`invalid_google_token`)"},
+        403: {
+            "model": ErrorResponse,
+            "description": "No staff account has this email (`google_account_not_staff`), or it is deactivated (`account_disabled`)",
+        },
+        503: {"model": ErrorResponse, "description": "Google sign-in is turned off on this server (`google_sign_in_unavailable`)"},
     },
 )
 def google_login(
-    body: GoogleAuthRequest,
-    request: Request,
-    response: Response,
-    db: SessionDep,
-    settings: SettingsDep,
+    body: GoogleSignInRequest, request: Request, response: Response, db: SessionDep, settings: SettingsDep
 ) -> SessionResponse:
-    client = ClientInfo.from_request(request)
-    cors = _cors_headers(request)
-
-    # 1. Google Firebase ID Token validation
-    try:
-        decoded_token = _verify_google_token(body.id_token)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired Google authentication token.",
-            headers=cors,
-        )
-
-    email = decoded_token.get("email")
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google account missing verified email.",
-            headers=cors,
-        )
-
-    normalized_email = email.lower().strip()
-
-    # 2. Look up user in Neon PostgreSQL
-    employee = db.query(Employee).filter(Employee.email == normalized_email).first()
-
-    # If the user has not been added by an Administrator in /portal/users:
-    if employee is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="ordinary_user_no_permission",
-            headers=cors,
-        )
-
-    if not employee.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has been deactivated.",
-            headers=cors,
-        )
-
-    # 3. Revoke any previous active session for this client
-    previous = find_session(db, request.cookies.get(settings.session_cookie_name))
-    if previous is not None:
-        revoke_session(previous, "replaced")
-
-    # 4. Generate new server session & set HttpOnly cookie
-    auth_session, token = start_session(db, settings, employee, client)
-    record_event(db, "auth.google_login_succeeded", actor=employee, target=employee, client=client)
-    db.commit()
-
-    set_session_cookie(response, settings, token)
-    principal = Principal(employee=employee, session=auth_session, permissions=permissions_of(employee))
-    return _session_response(principal, settings)
+    claims = verify_google_id_token(settings, body.id_token)
+    employee = authenticate_google(db, claims["email"], ClientInfo.from_request(request))
+    return _begin_session(employee, "auth.google_login_succeeded", request, response, db, settings)
 
 
 @router.post(
