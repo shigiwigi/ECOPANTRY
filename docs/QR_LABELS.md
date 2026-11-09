@@ -115,10 +115,10 @@ GET only, so no CSRF token. The code is never echoed back in errors.
    dates; nullable fields may be null. The portal already renders this shape
    (`src/features/qr/batches.ts`, `BatchLookup.tsx`, unit-tested). Lookups
    are reads: no stock change, no audit event.
-3. `GET /batches/labels?ids=…` (or a POST with ids), `qr_labels.manage`:
-   returns `{code, ingredient_name, expires_on}` per batch so the labels page
-   can print from the batch list instead of typed values. Then remove the
-   "Test code" button and the "not linked" notice.
+3. Done (2026-11-09): there is no separate labels endpoint. The labels page
+   builds labels from the batch list and detail (`GET /batches`), picking from
+   batches that still have stock. The typed-values form, the "Test code"
+   button and the "not linked" notice are gone.
 4. Optional: record label printing in the audit log
    (`batch.labels_printed`).
 

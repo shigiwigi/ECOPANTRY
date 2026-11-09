@@ -284,7 +284,11 @@ Session housekeeping, run occasionally from your computer (same
 
 ```bash
 .venv/bin/python -m app.cli purge-sessions --days 30
+.venv/bin/python -m app.cli purge-enquiries --months 12   # contact-form retention
+.venv/bin/python -m app.cli purge-readings --days 90      # old sensor readings (keeps ones an alert or pH record points at)
 ```
+
+None of these is scheduled yet (an M13 follow-up, for example a GitHub Actions cron).
 
 ## Stopping or deleting
 

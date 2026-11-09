@@ -1,7 +1,7 @@
 # EcoPantry roadmap
 
-Last audited: 2026-11-02, on `development` at `ae64ffd` (M4 progress added the
-same day, uncommitted). Status here is
+Last audited: 2026-11-09, on `development` (M5–M10 and M13 reports/audit viewer
+built and merged that day; hardware and deployment checks still open). Status here is
 checked against code, migrations and test runs, not just against what the UI
 shows. [PROJECT_STATUS.md](PROJECT_STATUS.md) is the detailed checklist of
 what is implemented; this document covers order, dependencies and acceptance
@@ -51,17 +51,17 @@ README numbering. See [decision D1](#decisions-needed).
 | M0 Repository audit | Done | none |
 | M1 Frontend foundation | Done | M0 |
 | M2 Backend foundation | Done | M0 |
-| M3 Staff authentication | Done, with follow-ups | M1, M2 |
-| M4 Public website | In progress | M1, M2, M3 |
-| M5 Core backend and database | Not started (foundation is M2) | M2, M3 |
-| M6 Inventory management | Structure only | M5 |
-| M7 QR, expiry and FEFO | In progress (QR labels and scanning; batch lookup waits on M6) | M6 |
-| M8 Dashboard and analytics | Structure only | M6, M7 (M9–M11 add panels) |
-| M9 Environmental monitoring | Structure only (no firmware) | M5, hardware |
-| M10 RFID and pH | Structure only (no firmware) | M9, M3 |
-| M11 Smart waste bin | Structure only (no firmware) | M9 |
-| M12 Alerts and notifications | Not started | M9, M11 |
-| M13 Reports, integration, deployment | Not started | all; deployment decisions D3–D5 |
+| M3 Staff authentication | Done (staff screen and role change fixed 2026-11-09); rate limiting and least-privilege DB role open | M1, M2 |
+| M4 Public website | In progress (contact form built; images and owner content open) | M1, M2, M3 |
+| M5 Core backend and database | Done (migrations 0005–0009, pagination, reference CRUD) | M2, M3 |
+| M6 Inventory management | Done | M5 |
+| M7 QR, expiry and FEFO | Done (not tried on physical phones or Safari) | M6 |
+| M8 Dashboard and analytics | Done | M6, M7 (M9–M11 add panels) |
+| M9 Environmental monitoring | Built, thresholds and alerts included; not yet run on the real board | M5, hardware |
+| M10 RFID and pH | Built (cards, taps, pH records); not yet run on the real board | M9, M3 |
+| M11 Smart waste bin | Built (weight, 2 kg alert, waste records, local warning); not yet run on the real board | M9 |
+| M12 Alerts and notifications | Done for sensor alerts (portal only); expiry/low-stock/offline alerts not built | M9, M11 |
+| M13 Reports, integration, deployment | Reports, audit viewer built; live checks, hardening and the hardware demo open | all |
 
 ```text
 M0 ─┬─ M1 ─┐
@@ -178,7 +178,7 @@ Products and product pages). Verified with backend `pytest` 156 passed,
 `npm run test:e2e:fullstack` 19 passed. Criteria 7–9 stay open until the
 decisions are made or the content is supplied. M4 is not complete until then.
 
-### M5 Core backend and database: Not started
+### M5 Core backend and database: Done
 
 Goal: the business schema and shared backend pieces that M6–M12 build on.
 
@@ -198,9 +198,9 @@ Acceptance criteria:
    sessions. Devices never reach the database directly.
 5. `audit_events` can target any record type, not only employees.
 
-Status 2026-11-06: criterion 4 is done ahead of the rest (migration `0004`, `app/auth/device.py`, see [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md)), and criterion 5 was done in M4. The device, sensor-reading and RFID-card tables are designed and migrated. The other business tables are not.
+Status 2026-11-09: all five criteria are met. Design: [DATA_MODEL.md](DATA_MODEL.md). Migrations `0005`–`0009` (inventory reference tables, batches and stock movements, thresholds and alerts, waste and pH records, enquiries) apply and roll back cleanly and `alembic check` reports no drift. Pagination, filtering and sorting live in `app/api/v1/pagination.py`. Device authentication (criterion 4) came earlier in `0004`.
 
-### M6 Inventory management: Structure only
+### M6 Inventory management: Done
 
 Depends on M5. Acceptance criteria:
 
@@ -214,7 +214,7 @@ Depends on M5. Acceptance criteria:
    controls (Inspector read-only, enforced by the backend).
 5. Backend, unit, smoke and full-stack tests.
 
-### M7 QR codes, expiry tracking and FEFO: In progress
+### M7 QR codes, expiry tracking and FEFO: Done
 
 Depends on M6. Acceptance criteria:
 
@@ -235,7 +235,9 @@ but labels are made from typed values until M6 assigns codes to real batches.
 Criterion 2 is met up to the batch lookup, which needs M6. Criteria 3 and 4
 are not started. Not tested on physical devices or real Safari.
 
-### M8 Dashboard and analytics: Structure only
+### M8 Dashboard and analytics: Done
+
+Status 2026-11-09: `GET /dashboard/summary` returns low-stock, near-expiry, expired, open-alert and active-staff figures, each null for roles that may not see it. The Dashboard shows them as tiles with an alert strip, plus the live station panel. No placeholder figures remain.
 
 Depends on M6 and M7; M9–M11 add their panels later. Acceptance criteria:
 
@@ -287,7 +289,7 @@ Depends on M9. Acceptance criteria:
 4. Waste records with category, reason, employee and time.
 5. Portal waste page with history and bin status.
 
-### M12 Alerts and notifications: Not started
+### M12 Alerts and notifications: Done for sensor alerts
 
 The ESP32-CAM camera was dropped from the project on 2026-11-09 (D14).
 
@@ -297,7 +299,9 @@ Depends on M9 (alert engine) and M11. Acceptance criteria:
    acknowledgement recorded against the employee.
 2. Notification channel, if any, decided first (decision D9).
 
-### M13 Reports, compliance, integration, testing and deployment: Not started
+### M13 Reports, compliance, integration, testing and deployment: In progress
+
+Status 2026-11-09: criteria 1 and 2 are built (reports with CSV and PDF export for stock, expiry, environment and waste; audit log viewer). Criteria 3–5 are open: the hardware demo, deployment checks on the live URLs, hardening (rate limiting, least-privilege database role) and scheduled clean-up.
 
 Depends on all other milestones. Acceptance criteria:
 
@@ -311,17 +315,17 @@ Depends on all other milestones. Acceptance criteria:
 
 ## Next milestone
 
-**M5 Core backend and database** (in-shop schema), together with fixing the
-staff-management and registration code added after M3 so it follows the
-rules again (no hard delete, no unverified self-registration, audited role
-changes). M4 is waiting only on owner content and decisions D6/D7.
+**Live verification.** The features are built and tested locally. What is left
+needs the real world: run the checks in [DEPLOYMENT.md](DEPLOYMENT.md) on the
+live URLs (iPhone Safari cookie check, Google sign-in), flash the station and
+try the setup hotspot and 2 kg alert on the real board, then the M13
+hardening items. M4 is waiting on owner content and decision D6 (images).
 
 ## Blockers
 
 - Owner-supplied content (bakery contact details, opening hours, About text,
   product list, photos). The site hides these until they exist.
-- Product images (D6) and the contact form (D7) need decisions before they
-  can be built.
+- Product images (D6) need a storage decision. The contact form (D7) is built with the recommended design.
 - Hardware checks need the physical station (one ESP32, DHT11, bin load cell), which exists but hasn't run against the API yet.
 
 ## Decisions needed

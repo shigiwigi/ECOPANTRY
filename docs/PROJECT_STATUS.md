@@ -4,7 +4,7 @@ Milestone order, dependencies and acceptance criteria: [ROADMAP.md](ROADMAP.md).
 Milestone numbers here (M1, M2, ...) are the roadmap's; the README phase
 numbers differ (the roadmap maps them).
 
-Last verified 2026-11-02, after the QR and layout work: backend `pytest` 184
+Last verified 2026-11-09, on `development` after the M5–M13 work (see "Build-out of 2026-11-09" below): backend `pytest` 529 passed, `alembic check` clean through `0009`; frontend lint (0 errors), `npm test` 305 passed, build OK with no preview code; Playwright results are listed in that section. Earlier figures, for reference (2026-11-02): backend `pytest` 184
 passed, `alembic check` clean (no new migration; development database at
 `0003`); frontend lint (0 errors), `npm test` 200 passed, build OK with no
 preview code in `dist/`; `npm run test:e2e` 302 passed (1 skipped:
@@ -26,11 +26,11 @@ Implementation status:
 - [x] Local PostgreSQL with Podman (Milestone 2)
 - [x] Authentication schema implemented (migration `0002`: roles, permissions, employees, sessions, audit events)
 - [x] Public catalogue schema implemented (migration `0003`: catalogue categories and products, `catalogue.manage` permission)
-- [ ] Business schema implemented (inventory, batches, suppliers, monitoring, waste)
+- [x] Business schema implemented (migrations `0005`–`0009`: units, ingredients, storage areas, batches, stock movements, thresholds, alerts, waste and pH records, enquiries). No suppliers: inventory is in-shop only
 - [x] Inventory firmware implemented (`software/firmware/inventory-esp32/`: one ESP32 with DHT11, HX711 bin weight, pH, MFRC522, LCD; builds and its core logic is unit-tested; not yet run against the API on the real board)
 - [x] Waste-bin weight read by the inventory station (no separate bin controller). The HC-SR04 fill level and the ESP32-CAM were dropped on 2026-11-09
 - [x] Inventory-station wiring added (`hardware/inventory-station/README.md`)
-- [ ] Integration tests completed
+- [ ] Integration tests completed (backend, browser and full-stack suites exist and pass locally; the live-URL checks and the hardware demo are still open)
 
 ## Milestone 1: frontend foundation (done)
 
@@ -186,6 +186,31 @@ Prepared and checked locally (2026-11-02):
 Not done yet:
 - [ ] The checklist in DEPLOYMENT.md run on the real URLs, including iPhone Safari (cross-site cookie) and a physical phone for the QR camera
 - [ ] Google sign-in on the live site (the production build env had no `VITE_FIREBASE_*` values on 2026-11-09)
+
+## Build-out of 2026-11-09 (M3 fixes, M5–M10, M12, M13 reports, CI)
+
+Built by parallel agents on separate branches, merged into `development` and verified together. Spec of each area: [ROADMAP.md](ROADMAP.md), [DATA_MODEL.md](DATA_MODEL.md).
+- [x] **Staff and auth fixes:** no self-registration and no employee delete (staff are deactivated); role change is audited, ends that employee's sessions and protects the last administrator; Users page rebuilt (list, create, change role, deactivate/reactivate, reset password); role ids are `admin` / `storekeeper` / `inspector` everywhere; CORS origins and the Firebase project id are settings; Firebase loads only on Google sign-in (main bundle 560 KB to 466 KB)
+- [x] **Inventory (M6):** ingredients, units, storage areas; batches with random label codes; stock in / out / adjust with a row lock, one movement and one audit event each, never below zero; low-stock flag; Inventory and Batches pages; labels print from batch records; scanner opens the batch; `GET /batches/by-label/{code}` returns 200 or 404 (no longer 501)
+- [x] **Expiry and FEFO (M7):** near-expiry and expired lists, summary, FEFO recommendation with a pick list, Expiry page
+- [x] **Alerts (M9/M12):** thresholds evaluated on each device upload in the same transaction, one alert per threshold and station, hysteresis, acknowledge, Alerts page, admin limits editor. Seeded: **bin weight at 2000 g or more opens "Waste bin nearly full", clears below 1500 g**. Waste page banner and chart reference line
+- [x] **Records (M10/M11):** waste records and pH records (pH marked experimental, no verdict) with forms on the Waste and pH pages
+- [x] **Contact form (M4):** `POST /public/enquiries` (hidden spam-trap field, in-process rate limit), admin enquiries inbox, 12-month purge command. Also `purge-readings`
+- [x] **Audit log viewer (M13):** `GET /audit` and a filtered page for administrators and inspectors
+- [x] **Dashboard (M8):** `GET /dashboard/summary` and real tiles; no placeholder figures
+- [x] **Reports (M13):** stock, expiry, environment and waste reports with JSON preview and CSV / PDF export (administrators and inspectors; each export is audited). PDF by ReportLab (decision: pure-Python wheels, no system libraries on Render; fpdf2 and WeasyPrint were the alternatives). pH is left out of reports
+- [x] **Firmware 0.2.0:** see the hardware section
+- [x] **CI:** `.github/workflows/ci.yml` (backend, frontend, full-stack e2e, firmware). Has not yet run on GitHub
+- [x] **Browser suites** brought in line with the real pages: dashboard heading and padding, shared sign-in messages, a theme-selector radio that sat off-screen, and specs that now create real batches
+
+Known gaps and caveats:
+- [ ] The new pages have not been looked at by a person at 375 px and in dark mode (the automated layout checks pass)
+- [ ] Waste records that name a batch don't yet reduce its stock; forms take a pasted batch id (no picker)
+- [ ] No portal screens for storage areas, ingredient edit/deactivate, or creating alert limits
+- [ ] Expiry, low-stock and device-offline alerts are not built
+- [ ] "Today" is the server's UTC date; a shop timezone setting may be needed
+- [ ] The purge commands (`purge-sessions`, `purge-enquiries`, `purge-readings`) are not scheduled
+- [ ] Per-IP rate limiting for the contact form is in-process only; Render's proxy address means it acts as a cap on all submissions
 
 ## Portal navigation and layout (2026-11-02)
 
