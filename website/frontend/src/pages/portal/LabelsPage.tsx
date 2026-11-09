@@ -1,24 +1,24 @@
-import { zodResolver } from "@hookform/resolvers/zod"
-import { Dices, Info, Plus, Printer, Trash2, X } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { CloudOff, Plus, Printer, Trash2, X } from "lucide-react"
 import { useId, useRef, useState } from "react"
-import { useForm } from "react-hook-form"
+import { EmptyState } from "@/components/common/EmptyState"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { NativeSelect } from "@/components/ui/native-select"
 import { getModule } from "@/config/portal-modules"
-import { formatCode, randomTestCode, readTypedLabel } from "@/features/qr/batch-label"
+import { batchesQuery, type Batch } from "@/features/inventory/api"
+import { failureMessage } from "@/features/inventory/format"
+import { formatCode } from "@/features/qr/batch-label"
 import { formatCalendarDate } from "@/features/qr/dates"
 import { BatchLabel, PrintSheet, type LabelData } from "@/features/qr/LabelSheet"
-import { labelFormSchema, MAX_COPIES, MAX_LABELS, MAX_NAME_LENGTH, type LabelFormValues } from "@/features/qr/schemas"
-import { cn } from "@/lib/utils"
+import { MAX_COPIES, MAX_LABELS } from "@/features/qr/schemas"
 
 interface Entry extends LabelData {
   id: number
   copies: number
 }
-
-const EMPTY_FORM: LabelFormValues = { ingredientName: "", code: "", expiresOn: "", copies: "1" }
 
 export default function LabelsPage() {
   const module = getModule("qr")
@@ -42,33 +42,21 @@ export default function LabelsPage() {
         }
       />
 
-      <div role="note" className="flex gap-3 rounded-lg border border-info/40 bg-info/10 px-4 py-3 text-sm">
-        <Info className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
-        <div className="space-y-1">
-          <p className="font-medium">Not linked to batch records yet</p>
-          <p>
-            Batch records arrive with the inventory module. Until then, labels are made from what you type here: the code
-            isn't checked against a batch and nothing is saved. Scanning one shows the code, but no batch details. Once
-            batches exist, labels will be printed from the batch list with the code the server assigns.
-          </p>
-        </div>
-      </div>
-
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
-        <LabelForm
+        <BatchPicker
           remaining={MAX_LABELS - total}
-          onAdd={(values) => {
-            const result = readTypedLabel(values.code)
-            if (!result.ok) return
-            const entry: Entry = {
-              id: nextId.current++,
-              code: result.code,
-              ingredientName: values.ingredientName.trim(),
-              expiresOn: values.expiresOn || null,
-              copies: Number(values.copies),
-            }
-            setEntries((current) => [...current, entry])
-          }}
+          onAdd={(batch, copies) =>
+            setEntries((current) => [
+              ...current,
+              {
+                id: nextId.current++,
+                code: batch.label_code,
+                ingredientName: batch.ingredient.name,
+                expiresOn: batch.expiry_on,
+                copies,
+              },
+            ])
+          }
         />
 
         <section aria-labelledby="labels-preview" className="min-w-0 rounded-lg border bg-card">
@@ -146,122 +134,91 @@ export default function LabelsPage() {
   )
 }
 
-function LabelForm({ remaining, onAdd }: { remaining: number; onAdd: (values: LabelFormValues) => void }) {
+function BatchPicker({ remaining, onAdd }: { remaining: number; onAdd: (batch: Batch, copies: number) => void }) {
   const id = useId()
-  const [limitError, setLimitError] = useState<string | null>(null)
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    setFocus,
-    formState: { errors },
-  } = useForm<LabelFormValues>({ resolver: zodResolver(labelFormSchema), defaultValues: EMPTY_FORM })
+  // Batches that still have stock, earliest use-by first. Labels come from the batch record, never from typed values.
+  const query = useQuery(batchesQuery({ hasStock: true, limit: 200 }))
+  const [batchId, setBatchId] = useState("")
+  const [copies, setCopies] = useState("1")
+  const [problem, setProblem] = useState<string | null>(null)
+  const batches = query.data?.items ?? []
 
-  const submit = handleSubmit((values) => {
-    if (Number(values.copies) > remaining) {
-      setLimitError(
+  const add = () => {
+    const batch = batches.find((candidate) => candidate.id === batchId)
+    if (!batch) return setProblem("Choose a batch.")
+    const count = Number(copies)
+    if (!/^\d+$/.test(copies) || count < 1 || count > MAX_COPIES) return setProblem(`Copies: a whole number from 1 to ${MAX_COPIES}.`)
+    if (count > remaining) {
+      return setProblem(
         remaining > 0
           ? `Up to ${MAX_LABELS} labels per print. There's room for ${remaining} more.`
           : `That's ${MAX_LABELS} labels, the most per print. Print these first, then clear them.`,
       )
-      return
     }
-    setLimitError(null)
-    onAdd(values)
-    reset(EMPTY_FORM)
-    setFocus("ingredientName")
-  })
-
-  const field = (name: keyof LabelFormValues) => {
-    const error = errors[name]
-    return {
-      id: `${id}-${name}`,
-      "aria-invalid": error ? true : undefined,
-      "aria-describedby": [`${id}-${name}-hint`, error ? `${id}-${name}-error` : null].filter(Boolean).join(" "),
-    }
+    setProblem(null)
+    onAdd(batch, count)
+    setBatchId("")
+    setCopies("1")
   }
-  const message = (name: keyof LabelFormValues) =>
-    errors[name] && (
-      <p id={`${id}-${name}-error`} className="text-sm text-destructive">
-        {errors[name]?.message}
-      </p>
-    )
 
   return (
     <section aria-labelledby={`${id}-title`} className="rounded-lg border bg-card">
       <h2 id={`${id}-title`} className="border-b px-4 py-3 text-sm font-semibold">
-        Add a label
+        Add a label from a batch
       </h2>
-      <form onSubmit={submit} noValidate className="space-y-4 p-4">
-        <div className="space-y-1.5">
-          <Label htmlFor={`${id}-ingredientName`}>Ingredient</Label>
-          <Input {...field("ingredientName")} {...register("ingredientName")} maxLength={MAX_NAME_LENGTH + 10} autoComplete="off" className="h-11 sm:h-9" />
-          <p id={`${id}-ingredientName-hint`} className="text-xs text-muted-foreground">
-            As staff call it, e.g. "Strong white flour". Up to {MAX_NAME_LENGTH} characters.
-          </p>
-          {message("ingredientName")}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor={`${id}-code`}>Batch code</Label>
-          <div className="flex gap-2">
-            <Input
-              {...field("code")}
-              {...register("code")}
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              placeholder="K7M2Q-9X4TR"
-              className="h-11 font-mono uppercase placeholder:normal-case sm:h-9"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 shrink-0 sm:h-9"
-              onClick={() => setValue("code", formatCode(randomTestCode()), { shouldValidate: true })}
-            >
-              <Dices aria-hidden />
-              Test code
+      <div className="space-y-4 p-4">
+        {query.isPending ? (
+          <p className="text-sm text-muted-foreground">Loading batches…</p>
+        ) : query.isError ? (
+          <EmptyState icon={CloudOff} title="Batches couldn't be loaded" description={failureMessage(query.error, "Try again.")}>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              Try again
             </Button>
-          </div>
-          <p id={`${id}-code-hint`} className="text-xs text-muted-foreground">
-            10 letters and digits. "Test code" makes a random one for trying out printing and scanning; it isn't linked
-            to any batch.
+          </EmptyState>
+        ) : batches.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No batch has stock to label. Receive stock on the Batches page first; each batch gets its own code.
           </p>
-          {message("code")}
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0 space-y-1.5">
-            <Label htmlFor={`${id}-expiresOn`}>Use by (optional)</Label>
-            <Input {...field("expiresOn")} {...register("expiresOn")} type="date" className="h-11 sm:h-9" />
-            <p id={`${id}-expiresOn-hint`} className="text-xs text-muted-foreground">
-              Printed as e.g. 20 Nov 2026.
-            </p>
-            {message("expiresOn")}
-          </div>
-          <div className="min-w-0 space-y-1.5">
-            <Label htmlFor={`${id}-copies`}>Copies</Label>
-            <Input {...field("copies")} {...register("copies")} type="number" inputMode="numeric" min={1} max={MAX_COPIES} className="h-11 sm:h-9" />
-            <p id={`${id}-copies-hint`} className="text-xs text-muted-foreground">
-              1 to {MAX_COPIES} (one A4 sheet).
-            </p>
-            {message("copies")}
-          </div>
-        </div>
-
-        {limitError && (
-          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {limitError}
-          </p>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-batch`}>Batch</Label>
+              <NativeSelect id={`${id}-batch`} value={batchId} onChange={(event) => setBatchId(event.target.value)} className="h-11 sm:h-9">
+                <option value="">Choose a batch</option>
+                {batches.map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.ingredient.name} · {formatCode(batch.label_code)} · use by {formatCalendarDate(batch.expiry_on)}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-xs text-muted-foreground">The label carries only the batch code; details are looked up when it is scanned.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-copies`}>Copies</Label>
+              <Input
+                id={`${id}-copies`}
+                value={copies}
+                onChange={(event) => setCopies(event.target.value)}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_COPIES}
+                className="h-11 sm:h-9"
+              />
+              <p className="text-xs text-muted-foreground">1 to {MAX_COPIES} (one A4 sheet).</p>
+            </div>
+            {problem && (
+              <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {problem}
+              </p>
+            )}
+            <Button type="button" onClick={add} className="h-11 w-full px-4 sm:h-9 sm:w-auto">
+              <Plus aria-hidden />
+              Add to sheet
+            </Button>
+          </>
         )}
-
-        <Button type="submit" className={cn("h-11 w-full px-4 sm:h-9 sm:w-auto")}>
-          <Plus aria-hidden />
-          Add to sheet
-        </Button>
-      </form>
+      </div>
     </section>
   )
 }

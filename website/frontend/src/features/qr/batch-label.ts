@@ -2,7 +2,7 @@
  * What a batch QR label carries, and how scanned or typed text is read back.
  *
  * A label encodes only `ECOPANTRY:BATCH:<code>`. The code is an opaque random
- * reference: no stock, supplier, employee, permission or session data. Batch
+ * reference: no stock, employee, permission or session data. Batch
  * details are fetched from the backend (behind `batches.view`) after scanning.
  *
  * Code format: 10 characters of Crockford base32 (digits and capitals without

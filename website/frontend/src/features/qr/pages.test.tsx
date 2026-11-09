@@ -72,7 +72,7 @@ async function enterCode(code: string) {
 }
 
 describe("QR scanner page", () => {
-  it("looks up a typed code and says honestly that batch details aren't connected yet", async () => {
+  it("explains a 501 from a backend that predates batch records", async () => {
     stubApi(() => json({ detail: "…", code: "batch_lookup_unavailable" }, 501))
     renderAt("/portal/scan", staff("inspector"))
     await enterCode("k7m2q-9x4tr")
@@ -94,6 +94,7 @@ describe("QR scanner page", () => {
   it("shows batch details once the backend returns them", async () => {
     stubApi(() =>
       json({
+        batch_id: "b1",
         code: "K7M2Q9X4TR",
         ingredient_name: "Strong white flour",
         received_on: "2026-10-01",
@@ -108,6 +109,7 @@ describe("QR scanner page", () => {
     await enterCode("K7M2Q9X4TR")
 
     expect(await screen.findByText("Strong white flour")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Open batch" })).toHaveAttribute("href", "/portal/batches?batch=b1")
     expect(screen.getByText("1 Jan 2020 (expired)")).toBeInTheDocument()
     expect(screen.getByText("12.500 kg")).toBeInTheDocument()
   })
@@ -179,17 +181,31 @@ describe("QR labels page", () => {
     expect(await screen.findByRole("heading", { name: "You don't have access to this page", level: 1 })).toBeInTheDocument()
   })
 
-  it("adds labels to a print-only sheet and prints through the browser", async () => {
+  const BATCH = {
+    id: "b1",
+    label_code: "K7M2Q9X4TR",
+    ingredient: { id: "i1", name: "Strong white flour", unit: "kg" },
+    storage_area: null,
+    received_on: "2026-10-01",
+    expiry_on: "2026-11-20",
+    quantity: "12.000",
+    remaining_quantity: "12.000",
+    status: "available",
+    notes: null,
+    created_at: "2026-10-01T08:00:00Z",
+  }
+
+  it("makes labels from real batch records and prints through the browser", async () => {
+    stubApi(() => json({ items: [BATCH], total: 1, limit: 200, offset: 0 }))
     const print = vi.spyOn(window, "print").mockImplementation(() => {})
     renderAt("/portal/qr", staff("storekeeper"))
     const user = userEvent.setup()
 
     expect(await screen.findByRole("button", { name: "Print labels" })).toBeDisabled()
-    expect(screen.getByText("Not linked to batch records yet")).toBeInTheDocument()
+    expect(screen.queryByText("Not linked to batch records yet")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Test code" })).not.toBeInTheDocument()
 
-    await user.type(screen.getByLabelText("Ingredient"), "Strong white flour")
-    await user.type(screen.getByLabelText("Batch code"), "k7m2q9x4tr")
-    await user.type(screen.getByLabelText("Use by (optional)"), "2026-11-20")
+    await user.selectOptions(await screen.findByLabelText("Batch"), "b1")
     await user.clear(screen.getByLabelText("Copies"))
     await user.type(screen.getByLabelText("Copies"), "2")
     await user.click(screen.getByRole("button", { name: "Add to sheet" }))
@@ -203,6 +219,7 @@ describe("QR labels page", () => {
     expect(sheet).not.toBeNull()
     expect(sheet?.querySelectorAll("svg")).toHaveLength(2)
     expect(sheet?.textContent).toContain("20 Nov 2026")
+    expect(requests[0].url).toContain("/batches?has_stock=true")
 
     await user.click(screen.getByRole("button", { name: "Print 2 labels" }))
     expect(print).toHaveBeenCalledTimes(1)
@@ -211,16 +228,18 @@ describe("QR labels page", () => {
     expect(document.body.querySelector(":scope > .print-sheet")).toBeNull()
   })
 
-  it("validates the form and makes valid test codes", async () => {
+  it("asks for a batch before adding a label", async () => {
+    stubApi(() => json({ items: [BATCH], total: 1, limit: 200, offset: 0 }))
     renderAt("/portal/qr", staff("admin"))
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: "Add to sheet" }))
-    expect(screen.getByText("Enter the ingredient name.")).toBeInTheDocument()
-    expect(screen.getByText("Enter a batch code.")).toBeInTheDocument()
+    expect(screen.getByText("Choose a batch.")).toBeInTheDocument()
+  })
 
-    await user.click(screen.getByRole("button", { name: "Test code" }))
-    expect((screen.getByLabelText("Batch code") as HTMLInputElement).value).toMatch(/^[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$/)
-    expect(screen.queryByText("Enter a batch code.")).not.toBeInTheDocument()
+  it("explains when there are no batches to label", async () => {
+    stubApi(() => json({ items: [], total: 0, limit: 200, offset: 0 }))
+    renderAt("/portal/qr", staff("admin"))
+    expect(await screen.findByText(/No batch has stock to label/)).toBeInTheDocument()
   })
 })
 

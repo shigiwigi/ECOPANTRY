@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CircleAlert, CloudOff, Info, LoaderCircle, PackageSearch } from "lucide-react"
 import type { ReactNode } from "react"
+import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/features/auth/auth-context"
 import { cn } from "@/lib/utils"
@@ -114,16 +115,23 @@ function BatchDetails({ batch }: { batch: BatchLabelLookup }) {
     ["Stored in", batch.storage_location ?? "Not recorded"],
   ]
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-      {rows.map(([term, value]) => (
-        <div key={term} className="contents">
-          <dt className="text-muted-foreground">{term}</dt>
-          <dd className={cn("min-w-0 break-words", term === "Use by" && days !== null && days < 0 && "font-medium text-destructive")}>
-            {value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div className="space-y-4">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+        {rows.map(([term, value]) => (
+          <div key={term} className="contents">
+            <dt className="text-muted-foreground">{term}</dt>
+            <dd className={cn("min-w-0 break-words", term === "Use by" && days !== null && days < 0 && "font-medium text-destructive")}>
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {batch.batch_id && (
+        <Button variant="outline" asChild className="h-11 sm:h-9">
+          <Link to={`/portal/batches?batch=${batch.batch_id}`}>Open batch</Link>
+        </Button>
+      )}
+    </div>
   )
 }
 

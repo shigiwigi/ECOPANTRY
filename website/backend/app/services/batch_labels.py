@@ -13,6 +13,7 @@ printed code small. The frontend has the same rules in
 """
 
 import re
+import secrets
 
 LABEL_PREFIX = "ECOPANTRY:BATCH:"
 CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -24,3 +25,8 @@ _CODE_RE = re.compile(CODE_PATTERN)
 
 def is_valid_code(code: str) -> bool:
     return _CODE_RE.fullmatch(code) is not None
+
+
+def generate_code() -> str:
+    """A new random label code. The caller checks it is unused (the database also enforces uniqueness)."""
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))

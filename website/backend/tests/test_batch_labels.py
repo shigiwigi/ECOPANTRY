@@ -1,8 +1,7 @@
 """Batch label codes and the scanner's batch lookup endpoint.
 
-Batches don't exist until M6, so a valid lookup answers 501. What these tests
-pin down now is the access control and validation in front of it, which must
-not change when the real lookup is added.
+These pin down the access control and validation in front of the lookup. The
+lookup itself (200 for a known code, 404 for an unknown one) is in test_batches.py.
 """
 
 from collections.abc import Callable
@@ -80,14 +79,14 @@ def test_every_role_that_views_batches_may_look_up_labels() -> None:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("role", [RoleCode.ADMIN, RoleCode.STOREKEEPER, RoleCode.INSPECTOR])
-def test_signed_in_staff_get_an_honest_not_available_yet(api: TestClient, make_employee: MakeEmployee, role: RoleCode) -> None:
+def test_signed_in_staff_get_not_found_for_an_unknown_code(api: TestClient, make_employee: MakeEmployee, role: RoleCode) -> None:
     sign_in(api, make_employee(role).email)
 
     response = api.get(LOOKUP.format(code=VALID_CODE))
 
-    assert response.status_code == 501
+    assert response.status_code == 404
     body = response.json()
-    assert body["code"] == "batch_lookup_unavailable"
+    assert body["code"] == "batch_not_found"
     assert VALID_CODE not in response.text  # never echo submitted values
 
 
@@ -108,7 +107,7 @@ def test_lookup_needs_no_csrf_token_because_it_only_reads(api: TestClient, make_
 
     response = api.get(LOOKUP.format(code=VALID_CODE), headers={"X-CSRF-Token": ""})
 
-    assert response.status_code == 501
+    assert response.status_code == 404
 
 
 @pytest.mark.integration

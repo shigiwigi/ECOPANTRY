@@ -16,7 +16,7 @@ export interface LabelData {
  * paper (3 × 7). The QR code is 30 mm including its quiet zone, about 0.9 mm per
  * module, which phone cameras read comfortably from 10–30 cm. Text is the
  * ingredient, the batch code (for typing in if the QR is damaged) and the
- * use-by date. Nothing else: no quantities, suppliers or people.
+ * use-by date. Nothing else: no quantities or people.
  */
 export function BatchLabel({ label, guides }: { label: LabelData; guides: boolean }) {
   const longName = label.ingredientName.length > 22
