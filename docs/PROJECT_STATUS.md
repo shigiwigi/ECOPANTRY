@@ -164,9 +164,10 @@ Implemented and tested:
 - [x] Frontend tests: `src/features/sensors/sensors.test.tsx` (16 tests), and `e2e/fullstack/sensors.fullstack.ts`, where a real backend receives station uploads and card taps. Charts checked in light and dark screenshots.
 
 
+- [x] Firmware 0.2.0 (2026-11-09): WiFi/API/token setup hotspot in NVS (no `secrets.h`), 401 reopens setup, BOOT-hold and serial `setup` / `wifi reset` / `factory reset`; local "bin nearly full" warning (2.0 kg on, 1.5 kg off, LCD page + red LED + rate-limited beep). Logic host-tested (51 native tests); builds for `esp32dev` and `esp32dev-lan`. **Not yet tested on a real board**: hotspot, captive portal, BOOT button, buzzer/LED, load-cell thresholds.
+
 Not done yet:
 - [ ] Flash the firmware and run it against the API on the real station (local LAN first, then Render)
-- [ ] WiFi setup hotspot to replace `secrets.h` (designed in HARDWARE_INTEGRATION.md, not built)
 - [ ] Thresholds and alerts on readings, including the waste bin "nearly full" alert at about 2 kg (portal alert plus a local station warning)
 - [ ] Waste records, pH records workflow
 - [ ] Data retention for `sensor_readings` (one row per 10 s while live, about 2 MB per live day)

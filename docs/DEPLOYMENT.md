@@ -221,11 +221,8 @@ uses the same email) or with a password set by an administrator.
 Details: [HARDWARE_INTEGRATION.md](HARDWARE_INTEGRATION.md).
 
 1. As an administrator, open **Devices** in the portal and register the station. Copy the token it shows once.
-2. In `software/firmware/inventory-esp32/include/secrets.h` (git-ignored, never `secrets.example.h`):
-   - set `DEVICE_TOKEN` to that token
-   - set `API_BASE_URL` to `https://ecopantry-api.onrender.com/api/v1` (Render directly, not the website)
-   - set the WiFi details
-3. Flash the station. (A setup hotspot that replaces `secrets.h` is planned; see HARDWARE_INTEGRATION.md.)
+2. Flash with `pio run -e esp32dev -t upload`. No secrets file is needed. On first power-on the station opens a hotspot `EcoPantry-XXXX` (password on its LCD and serial monitor).
+3. Join it from a phone, open `http://192.168.4.1`, and enter the WiFi network and password, the API address `https://ecopantry-api.onrender.com/api/v1` (Render directly, not the website) and the device token. Moving between Render and a laptop (`esp32dev-lan` build, `http://<LAN-IP>:8000/api/v1`) needs only the setup page. If the token is rotated the station shows `TOKEN REFUSED` and reopens the hotspot. Not yet tested on a real board.
 4. On the Employees page, assign your RFID card. Tap a card on the station first, so its UID shows up under "Recently tapped cards nobody holds".
 
 The station uploads only during **live sessions**: 5 minutes after power-on, then 15 minutes per authorised card tap, at most 240 minutes a day. Between sessions it sends nothing, so Render and Neon go back to sleep and the free plans last the month. The lengths are optional Render variables:
@@ -238,7 +235,7 @@ The defaults are in `app/core/config.py`. **Raising the daily limit far above 24
 
 **Before a demo with the station:** tap a card about a minute early. The first request wakes Render, and the station shows `CHECKING CARD` until it answers.
 
-The Neon connection string belongs only in Render's `DATABASE_URL`. It never goes in the firmware, `secrets.h` or any committed file.
+The Neon connection string belongs only in Render's `DATABASE_URL`. It never goes in the firmware, the setup page or any committed file.
 
 ## 6. Verify the deployment
 

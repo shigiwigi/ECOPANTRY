@@ -69,8 +69,8 @@ flowchart LR
 
 ## Bring-up checklist
 
-1. Flash the firmware with no network secrets yet. The LCD shows `CONFIG ERROR` on the status page, but every sensor page should already work.
+1. Flash the firmware. With no saved network details it opens its setup hotspot (`EcoPantry-XXXX`); every sensor page should already work.
 2. The DHT11 page shows a plausible room temperature and humidity.
 3. Run `tare` with the bin empty, then `cal <grams>` with a known weight. Check the reading returns to 0 g.
 4. Put the pH probe in pH 7 buffer: the reading should be near 7 after `ph cal`.
-5. A card tap shows `CHECKING CARD`. Then add `secrets.h`, register the device, and check that a tap reaches the server (`[api] POST /device/rfid-scans -> 200` on the serial console).
+5. A card tap shows `CHECKING CARD`. Then enter the WiFi, API address and token on the setup page, register the device, and check that a tap reaches the server (`[api] POST /device/rfid-scans -> 200` on the serial console).

@@ -17,11 +17,9 @@ Portal (Firebase Hosting) ──HTTPS + CORS, staff session─┘   polls every 
 - **The station calls Render directly** (`https://ecopantry-api.onrender.com/api/v1`), not through the website. It is not a browser, so it needs no CORS and no cookies.
 - **Real time in the portal is polling**, not websockets or server-sent events. TanStack Query refetches every 2 s and stops while the tab is hidden. Render's free tier doesn't hold long-lived streams reliably, and readings only arrive every 3 s anyway.
 
-## Entering the WiFi and API details (setup hotspot): planned, not built
+## Entering the WiFi and API details (setup hotspot)
 
-Today the WiFi details, API address and device token are compiled in from the git-ignored `include/secrets.h` (see the firmware README). The setup hotspot below is the agreed design that will replace it. **None of it is in the firmware yet.**
-
-The WiFi name and password, the API address and the device token are **not compiled into the firmware**. They are entered on a setup page that the station serves from its own hotspot, and saved in the board's flash (NVS). Nothing secret is kept in a file or in Git, one firmware build works for any network, and moving between a laptop and Render needs no reflash.
+Firmware 0.2.0 implements this. The WiFi details, API address and device token are **not compiled in**: there is no `secrets.h`. They are entered on a setup page served from the station's own hotspot and saved in flash (NVS, in its own namespace, so `cal reset` doesn't touch them). Host-tested logic is in `lib/ecopantry_core` (`setup_form`, `wifi_setup`, `hold_button`); the hotspot and page are in `src/net/setup_portal.cpp`. **On-board behaviour is untested until a board is flashed.**
 
 ```
 Power on ─► details saved? ──no──► SETUP: hotspot "EcoPantry-A1B2" + page at 192.168.4.1
@@ -36,8 +34,9 @@ Power on ─► details saved? ──no──► SETUP: hotspot "EcoPantry-A1B2"
 - **The hotspot** is WPA2 with a random 8-character password per setup, shown only on the LCD and the serial monitor, so only someone at the station can join. It allows at most 2 clients.
 - **The page** is served only to clients on the hotspot's own subnet, so someone on the normal WiFi can't reach it while it is open. It lists nearby 2.4 GHz networks, accepts a typed name for hidden ones, and checks every field (WiFi password 8–63 characters or empty, API address `https://…/api/v1`, token `epd_…`). `http://` is accepted only by the `esp32dev-lan` build. Leaving the token empty keeps the saved one.
 - **Saving** writes the details to flash and tries them straight away. If they fail (wrong password, network off) the hotspot stays open, the details stay saved, and the station retries every 30 s, so a network that appears later is joined automatically. The phone may lose the hotspot when the station moves to the router's radio channel; the LCD shows `CONNECTING TO:` and then `ONLINE`.
-- **Uploads pause** while the hotspot is open and resume once the station is online and the hotspot has closed. The live-session rules below are unchanged.
-- **Opening setup again:** hold the BOOT button for 5 s (clears the WiFi), or `setup` / `wifi reset` / `factory reset` over serial. It also opens by itself after 2 minutes of failing to join the saved network, and when the server refuses the device token (`TOKEN REFUSED`), so a new token can be entered without a cable.
+- **Uploads pause** while the hotspot is open and resume once the station is online and the hotspot has closed. No API request of any kind, including card checks, is made while it is open; a card tap then shows `SETUP OPEN`. The live-session rules below are unchanged.
+- **Opening setup again:** hold BOOT (GPIO0) for 5 s while running (clears the WiFi name and password; API address and token stay), or use the serial console: `setup` (opens the hotspot, forgets nothing; closes after 10 min if nothing is saved and the station is online), `wifi reset` (same as BOOT), `factory reset` (erases all saved settings **and the load-cell and pH calibration**, then restarts). It also opens by itself after 2 minutes of failing to join the saved network, and when the server answers 401 to the device token (`TOKEN REFUSED` on the LCD); this replaces the old "locked until reboot" behaviour, and saving a token on the page resumes uploads.
+- **The page never shows the saved WiFi password or token.** An empty token field keeps the saved token; an empty password keeps the saved one only when the network name is unchanged.
 - **Stored in plain NVS.** The WiFi password and token are not encrypted in flash: anyone with the board and a USB cable can read them, as they could when they were compiled in. Neither is ever printed to the serial monitor or sent back to the page.
 - **Not supported:** 5 GHz networks, and networks that need a login page (school, hotel, some office WiFi).
 
@@ -78,7 +77,7 @@ Power on ─► details saved? ──no──► SETUP: hotspot "EcoPantry-A1B2"
 
 **Cost:** a 15-minute session plus Neon's 5-minute idle tail is about 20 minutes of compute. The 240-minute daily cap keeps even a heavily used station inside the free tier.
 
-A 401 puts the station in `LOCKED`, and it makes no further requests until it is rebooted. A 5xx or timeout is retried with exponential backoff (5 s doubling to 60 s), and the backoff time counts toward the session.
+A 401 shows `TOKEN REFUSED`, stops all requests and opens the hotspot until a token is saved (or the station is rebooted). A 5xx or timeout is retried with exponential backoff (5 s doubling to 60 s), and the backoff time counts toward the session.
 
 ## What is stored
 
@@ -115,10 +114,13 @@ A station is **stale** when its latest reading is older than three report interv
 
 Experimental everywhere: on the LCD, in the API (`ph_value` field description) and in the portal. It is never used alone to decide whether food is safe or spoiled. EcoPantry is a prototype, not a certified food-safety system.
 
+## Waste bin nearly full (local warning)
+
+The station warns on its own when the bin is nearly full, with no network or live session needed. A filtered load-cell weight of 2.0 kg or more for 5 s shows `BIN NEARLY FULL` on the LCD (one of the rotating pages), blinks the red LED and beeps once (at most once per 10 minutes). It clears below 1.5 kg (hysteresis). Readings are ignored while the load cell isn't answering. Thresholds: `kBinFullGrams` and `kBinClearGrams` in `include/config.h`. Calibrate the load cell against the actual bin first. The portal alert at the same weight is a separate backend feature (below).
+
 ## Not built yet
 
-- **The setup hotspot** described above.
-- **Thresholds and alerts on readings** (roadmap M9 criterion 2), including the waste-bin alert: when the bin's load cell reads about **2 kg** the portal opens a "Waste bin nearly full" alert (it clears below 1.5 kg), and the station shows a local warning on its LCD and LED/buzzer even when not live.
+- **Thresholds and alerts on readings** (roadmap M9 criterion 2), including the waste-bin alert: when the bin's load cell reads about **2 kg** the portal opens a "Waste bin nearly full" alert (it clears below 1.5 kg).
 - **Waste records and pH records** (M10, M11).
 
 Dropped from the project (2026-11-09): the HC-SR04 ultrasonic fill-level sensor and the ESP32-CAM. The bin's fullness comes from its weight alone.
