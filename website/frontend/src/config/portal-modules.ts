@@ -184,12 +184,10 @@ export const PORTAL_MODULES: PortalModule[] = [
     path: "reports",
     label: "Reports",
     title: "Reports",
-    summary: "Compliance-oriented reports with CSV and PDF export.",
+    summary: "Stock, expiry, environment and waste reports, with CSV and PDF export.",
     icon: FileText,
     group: "Records",
     roles: OVERSIGHT,
-    planned: ["Stock, expiry, environment and waste reports", "CSV and PDF export"],
-    requires: "Stored operational records (milestone M13).",
   },
   {
     id: "audit",
