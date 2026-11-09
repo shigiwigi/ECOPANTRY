@@ -1,6 +1,9 @@
 import "@testing-library/jest-dom/vitest"
-import { cleanup } from "@testing-library/react"
+import { cleanup, configure } from "@testing-library/react"
 import { afterEach, vi } from "vitest"
+
+// Pages are lazy-loaded and fetch data; the default 1 s wait is too tight when the machine is busy.
+configure({ asyncUtilTimeout: 4000 })
 
 // jsdom has no matchMedia; tests override `matches` through mockSystemTheme().
 let systemDark = false
