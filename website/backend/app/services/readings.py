@@ -15,6 +15,7 @@ from app.core.errors import TooManyRequestsError
 from app.models.devices import Device, SensorReading
 from app.schemas.devices import MAX_READING_AGE_MS, ReadingBatchIn
 from app.schemas.sensors import HistoryRange, Metric
+from app.services.alerts import evaluate_reading
 from app.services.live_sessions import require_live
 
 # Bucket sizes keep every chart at a few hundred points at most.
@@ -40,11 +41,12 @@ def ingest(db: Session, settings: Settings, device: Device, batch: ReadingBatchI
         raise UploadTooSoonError(headers={"Retry-After": str(settings.device_min_report_interval_seconds)})
 
     stored = 0
+    newest: SensorReading | None = None
     for reading in batch.readings:
         age_ms = batch.sent_uptime_ms - reading.uptime_ms
         if age_ms > MAX_READING_AGE_MS:
             continue
-        db.add(
+        row = (
             SensorReading(
                 device_id=device.id,
                 recorded_at=now - timedelta(milliseconds=age_ms),
@@ -59,8 +61,15 @@ def ingest(db: Session, settings: Settings, device: Device, batch: ReadingBatchI
                 load_cell_ok=reading.load_cell_ok,
             )
         )
+        db.add(row)
+        if newest is None or row.recorded_at >= newest.recorded_at:
+            newest = row
         stored += 1
     device.last_reading_at = now
+    if newest is not None:
+        # Same transaction as the stored readings. Only the newest one, so a backlog costs one evaluation.
+        db.flush()
+        evaluate_reading(db, device, newest)
     return stored
 
 
