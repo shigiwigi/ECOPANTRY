@@ -26,6 +26,19 @@ def test_only_administrators_manage_the_public_catalogue() -> None:
     assert holders == {RoleCode.ADMIN}
 
 
+def test_only_administrators_read_contact_form_enquiries() -> None:
+    holders = {role for role, held in ROLE_PERMISSIONS.items() if Permission.ENQUIRIES_VIEW in held}
+
+    assert holders == {RoleCode.ADMIN}
+
+
+def test_out_of_scope_permissions_are_gone() -> None:
+    """Scope decision D14: no suppliers, no camera (removed by migration 0005)."""
+    codes = {permission.value for permission in Permission}
+
+    assert not codes & {"suppliers.view", "suppliers.manage", "camera.view"}
+
+
 def test_every_permission_belongs_to_some_role() -> None:
     granted = frozenset().union(*ROLE_PERMISSIONS.values())
 
@@ -34,7 +47,7 @@ def test_every_permission_belongs_to_some_role() -> None:
 
 @pytest.mark.integration
 def test_database_seed_matches_the_code(migrated_database_url: str) -> None:
-    """Migrations 0002 and 0003 seed roles and permissions; app/auth/permissions.py must say the same."""
+    """Migrations 0002, 0003, 0005 and 0009 set roles and permissions; app/auth/permissions.py must say the same."""
     engine = create_engine(migrated_database_url)
     try:
         with engine.connect() as connection:
