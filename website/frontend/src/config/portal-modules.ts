@@ -1,5 +1,6 @@
 import {
   BellRing,
+  Camera,
   Boxes,
   CalendarClock,
   ClipboardList,
@@ -154,6 +155,16 @@ export const PORTAL_MODULES: PortalModule[] = [
     title: "Waste",
     summary: "Live waste-bin weight from the load cell under the bin, with history.",
     icon: Trash2,
+    group: "Monitoring",
+    roles: ALL,
+  },
+  {
+    id: "camera",
+    path: "camera",
+    label: "Camera",
+    title: "Camera",
+    summary: "Live view from the ESP32-CAM on the shop's network. Nothing is recorded or uploaded.",
+    icon: Camera,
     group: "Monitoring",
     roles: ALL,
   },

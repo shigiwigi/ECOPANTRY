@@ -21,6 +21,7 @@ const CUSTOM_PAGES: Record<string, () => Promise<{ default: ComponentType }>> = 
   users: () => import("@/pages/portal/UsersPage"),
   environment: () => import("@/pages/portal/EnvironmentPage"),
   ph: () => import("@/pages/portal/PhPage"),
+  camera: () => import("@/pages/portal/CameraPage"),
   waste: () => import("@/pages/portal/WastePage"),
   devices: () => import("@/pages/portal/DevicesPage"),
   employees: () => import("@/pages/portal/EmployeesPage"),
