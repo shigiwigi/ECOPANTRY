@@ -85,7 +85,7 @@ The public finished-product catalogue is separate from internal raw ingredient i
 
 ## Hardware
 
-**The prototype is one ESP32 station** that also weighs the waste bin. The earlier plans for an ultrasonic fill-level sensor and an ESP32-CAM were dropped on 2026-11-09.
+**The prototype is one ESP32 inventory station** that also weighs the waste bin, plus **one ESP32-CAM** for a live view. The ultrasonic fill-level sensor was dropped on 2026-11-09; the ESP32-CAM was dropped the same day and brought back as a live view only.
 
 ### 1. Inventory monitoring station (built, one ESP32)
 - ESP32 DevKit V1
@@ -101,7 +101,12 @@ Wiring and pins: `hardware/inventory-station/README.md`. Firmware: `software/fir
 ### 2. Smart waste bin
 - Load cell and HX711, wired to the inventory station's ESP32
 
-The load cell measures the bin's weight. At about 2 kg the bin counts as nearly full: the portal raises an alert and the station warns locally (planned, see `docs/ROADMAP.md`).
+The load cell measures the bin's weight. At about 2 kg the bin counts as nearly full: the portal raises an alert and the station warns locally (built; not yet run on the real board, see `docs/ROADMAP.md`).
+
+### 3. Camera (ESP32-CAM, built)
+- AI Thinker ESP32-CAM, 5 V supply of at least 2 A
+
+It sends JPEG frames to the API over HTTPS only while someone has the portal's Camera page open, and the API keeps just the latest frame in memory (nothing is recorded). It authenticates with a shared secret (`CAMERA_DEVICE_SECRET`), not a sensor-station token. Setup: `software/firmware/camera-esp32/README.md`.
 
 See `hardware/` and `software/firmware/` for the intended locations of wiring diagrams, enclosure files, and firmware.
 

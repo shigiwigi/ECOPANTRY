@@ -118,6 +118,7 @@ or `website/backend/.env` (environment variables win). See `.env.example`.
 | `LOGIN_MAX_FAILED_ATTEMPTS` | no | `5` | Wrong passwords in a row before a temporary lockout. |
 | `LOGIN_LOCKOUT_MINUTES` | no | `15` | Length of that lockout. |
 | `CORS_ORIGINS` | no | `http://localhost:5173,http://127.0.0.1:5173` | Exact browser origins allowed to call the API with the session cookie (comma-separated or a JSON list). No wildcards, paths or trailing slashes. Production (`render.yaml`) sets the two Firebase Hosting origins. Other origins get no CORS headers. |
+| `CAMERA_DEVICE_SECRET` | no | unset | Shared secret the ESP32-CAM sends to push frames (`/device/camera/*`). Unset disables the camera relay. A long random string; set it in the Render dashboard, never in files. |
 | `FIREBASE_PROJECT_ID` | no | `ecopantry-a7342` | Firebase project whose Google sign-in ID tokens `/auth/google` accepts. Not a secret; no service-account key is needed. Set it empty to turn Google sign-in off (`503 google_sign_in_unavailable`). |
 
 `DATABASE_URL` is held as a secret value, so it doesn't show up in logs or

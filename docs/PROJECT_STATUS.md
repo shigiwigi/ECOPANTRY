@@ -28,7 +28,8 @@ Implementation status:
 - [x] Public catalogue schema implemented (migration `0003`: catalogue categories and products, `catalogue.manage` permission)
 - [x] Business schema implemented (migrations `0005`–`0009`: units, ingredients, storage areas, batches, stock movements, thresholds, alerts, waste and pH records, enquiries). No suppliers: inventory is in-shop only
 - [x] Inventory firmware implemented (`software/firmware/inventory-esp32/`: one ESP32 with DHT11, HX711 bin weight, pH, MFRC522, LCD; builds and its core logic is unit-tested; not yet run against the API on the real board)
-- [x] Waste-bin weight read by the inventory station (no separate bin controller). The HC-SR04 fill level and the ESP32-CAM were dropped on 2026-11-09
+- [x] Waste-bin weight read by the inventory station (no separate bin controller). The HC-SR04 fill level was dropped on 2026-11-09 (the ESP32-CAM was dropped too, then reinstated as a live view, see Camera below)
+- [x] Camera (2026-11-09): ESP32-CAM firmware (`software/firmware/camera-esp32/`) pushes frames over HTTPS to `POST /device/camera/frame` while a viewer is watching; `GET /camera/frame` serves the latest to signed-in staff (in memory, no database); Camera portal page. Backend auth and size limits are tested (`tests/test_camera.py`); the end-to-end path (camera to hosted page) is not yet confirmed on the real site
 - [x] Inventory-station wiring added (`hardware/inventory-station/README.md`)
 - [ ] Integration tests completed (backend, browser and full-stack suites exist and pass locally; the live-URL checks and the hardware demo are still open)
 
@@ -49,7 +50,7 @@ Implemented and tested with unit tests, Playwright smoke tests and screenshot re
 - [x] Browser UI/UX and accessibility review (2026-11-01): every route checked at 375, 1024 and 1440px in light and dark, for all three preview roles. Fixed: sign-in now reports an unreachable server instead of "Not found." when no backend is running; each page has its own browser tab title; focus moves to the new page after navigation; 404s stay inside the public or portal layout; the portal sidebar stays in view on short screens; tap targets are at least 24px; the no-access state has a page heading
 
 Structure only. These show an honest "not connected" state and no data:
-- [ ] Remaining portal modules (inventory, batches, expiry, alerts, reports, audit log). Each lists what it is waiting on. The suppliers and camera modules are to be removed (scope cut, 2026-11-09).
+- [ ] Remaining portal modules (inventory, batches, expiry, alerts, reports, audit log). Each lists what it is waiting on. The suppliers module is to be removed (scope cut, 2026-11-09).
 - [x] Public product catalogue (done in Milestone 4, below)
 - [ ] Public bakery contact details and opening hours (`website/frontend/src/config/site.ts`, to be filled in by the owners)
 
@@ -168,7 +169,7 @@ Implemented and tested:
 
 Not done yet:
 - [ ] Flash the firmware and run it against the API on the real station (local LAN first, then Render)
-- [ ] Thresholds and alerts on readings, including the waste bin "nearly full" alert at about 2 kg (portal alert plus a local station warning)
+- [x] Thresholds and alerts on readings, including the waste bin "nearly full" alert at about 2 kg (portal alert plus a local station warning)
 - [ ] Waste records, pH records workflow
 - [ ] Data retention for `sensor_readings` (one row per 10 s while live, about 2 MB per live day)
 

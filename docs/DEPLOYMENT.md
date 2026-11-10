@@ -101,6 +101,7 @@ git-ignored.
 | `LOG_LEVEL` | `INFO` | `render.yaml` |
 | `DATABASE_CONNECT_TIMEOUT` | `15` | `render.yaml` |
 | `CORS_ORIGINS` | `https://ecopantry-a7342.web.app,https://ecopantry-a7342.firebaseapp.com` | `render.yaml` (not a secret). Add an origin here if the site gets another address, such as a custom domain. |
+| `CAMERA_DEVICE_SECRET` | set in the Render dashboard (`sync: false`) | Shared secret for the ESP32-CAM relay. Must equal `CAMERA_SECRET` in the camera's `secrets.h`. Rotate by changing both and reflashing. |
 | `FIREBASE_PROJECT_ID` | `ecopantry-a7342` | `render.yaml` (not a secret). Google ID tokens for any other project are refused; empty turns Google sign-in off. |
 
 Leave everything else at the defaults in `app/core/config.py` (60 min idle /

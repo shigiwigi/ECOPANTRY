@@ -163,7 +163,7 @@ export const PORTAL_MODULES: PortalModule[] = [
     path: "camera",
     label: "Camera",
     title: "Camera",
-    summary: "Live view from the ESP32-CAM on the shop's network. Nothing is recorded or uploaded.",
+    summary: "Live view from the ESP32-CAM, relayed through the API. Frames are kept in memory only; nothing is recorded.",
     icon: Camera,
     group: "Monitoring",
     roles: ALL,

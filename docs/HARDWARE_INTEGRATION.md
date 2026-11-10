@@ -141,4 +141,4 @@ The seeded threshold is "Waste bin nearly full": `weight_g` at or above 2000 g, 
 
 - **Waste records and pH records** (M10, M11).
 
-Dropped from the project (2026-11-09): the HC-SR04 ultrasonic fill-level sensor and the ESP32-CAM. The bin's fullness comes from its weight alone.
+Dropped from the project (2026-11-09): the HC-SR04 ultrasonic fill-level sensor. The bin's fullness comes from its weight alone. The ESP32-CAM was dropped the same day and reinstated as a live view only: it pushes frames over HTTPS to `/device/camera/*` while a staff member has the portal's Camera page open, with one shared secret and nothing stored (`software/firmware/camera-esp32/README.md`).

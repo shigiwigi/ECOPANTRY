@@ -37,7 +37,7 @@ each one to its README phase.
 | M9 | Environmental monitoring (ESP32) | 8 |
 | M10 | RFID employees and pH monitoring | 9 |
 | M11 | Smart waste bin | 10 |
-| M12 | Alerts and notifications (camera dropped) | 11 |
+| M12 | Alerts and notifications (the camera is a separate live view, D16) | 11 |
 | M13 | Reports, compliance, full integration, testing and deployment | 12 and 13 |
 
 The "Phase N" references in `website/frontend/src/config/portal-modules.ts`
@@ -291,7 +291,7 @@ Depends on M9. Acceptance criteria:
 
 ### M12 Alerts and notifications: Done for sensor alerts
 
-The ESP32-CAM camera was dropped from the project on 2026-11-09 (D14).
+The ESP32-CAM was dropped on 2026-11-09 (D14) and reinstated the same day as a live view only (D16).
 
 Depends on M9 (alert engine) and M11. Acceptance criteria:
 
@@ -345,5 +345,6 @@ hardening items. M4 is waiting on owner content and decision D6 (images).
 | D9 | Alert notification channel (email, SMS, none) | Portal-only alerts for the prototype |
 | D10 | Who manages the public catalogue | Administrators only (implemented that way; adding Storekeepers is one migration) |
 | D11 | Allergen and ingredient information on public product pages | Leave out until the owners can supply verified information; wrong allergen data is a safety risk |
-| D14 | Scope cut | **Decided (2026-11-09):** inventory is in-shop only (no suppliers); the HC-SR04 ultrasonic fill level and the ESP32-CAM are dropped; the waste bin raises a "nearly full" alert at about 2 kg of weight |
+| D14 | Scope cut | **Decided (2026-11-09):** inventory is in-shop only (no suppliers); the HC-SR04 ultrasonic fill level and the ESP32-CAM are dropped (the camera was reinstated as a live view, D16); the waste bin raises a "nearly full" alert at about 2 kg of weight |
+| D16 | Scope change | **Decided (2026-11-09):** the ESP32-CAM is back as a live view only. It pushes frames to the API over HTTPS while a viewer watches; the API keeps the latest frame in memory, nothing is recorded, and no database is touched. Auth is one shared secret (`CAMERA_DEVICE_SECRET`) |
 | D15 | Website hosting | **Decided (2026-11-09):** keep the live setup: Firebase Hosting (`ecopantry-a7342.web.app`) and Firebase Auth for Google sign-in, calling the Render API cross-origin with a CORS allow-list and a SameSite=None cookie. If iPhone Safari blocks that cookie, move both onto one custom domain. |
